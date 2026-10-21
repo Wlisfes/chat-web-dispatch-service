@@ -1,0 +1,199 @@
+name: Build and deploy
+
+on:
+    push:
+        branches:
+            - main
+    workflow_dispatch:
+
+jobs:
+    verify:
+        name: Verify service
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            packages: read
+
+        steps:
+            - name: Check out repository
+              uses: actions/checkout@v4
+
+            - name: Set up Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: yarn
+                  registry-url: https://npm.pkg.github.com
+                  scope: '@wlisfes'
+
+            - name: Install dependencies
+              env:
+                  NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: yarn install --frozen-lockfile --non-interactive
+
+            - name: Check formatting
+              run: yarn format:check
+
+            - name: Build and test
+              run: yarn test
+
+    build:
+        name: Build and publish image
+        needs: verify
+        runs-on: ubuntu-latest
+        concurrency:
+            group: build-${{ github.ref }}
+            cancel-in-progress: true
+        permissions:
+            contents: read
+            packages: write
+        outputs:
+            image: ${{ steps.image.outputs.name }}
+
+        steps:
+            - name: Check out repository
+              uses: actions/checkout@v4
+
+            - name: Resolve image name
+              id: image
+              shell: bash
+              run: |
+                  repository="ghcr.io/${GITHUB_REPOSITORY,,}"
+                  echo "name=${repository}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+                  echo "latest=${repository}:latest" >> "$GITHUB_OUTPUT"
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: Log in to GitHub Container Registry
+              uses: docker/login-action@v3
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Build and push image
+              uses: docker/build-push-action@v6
+              with:
+                  context: .
+                  push: true
+                  tags: |
+                      ${{ steps.image.outputs.name }}
+                      ${{ steps.image.outputs.latest }}
+                  labels: |
+                      org.opencontainers.image.revision=${{ github.sha }}
+                      org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max
+                  secrets: |
+                      github_token=${{ secrets.GITHUB_TOKEN }}
+
+    deploy:
+        name: Deploy to home
+        needs: build
+        runs-on:
+            - self-hosted
+            - linux
+            - chat-home-server
+        environment: production-home
+        concurrency:
+            group: deploy-chat-home-server
+            cancel-in-progress: false
+        permissions:
+            contents: read
+            packages: read
+        env:
+            DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/chat-web-dispatch-service' }}
+            DEPLOYMENT_ENVIRONMENT: production-home
+            DEFAULT_NACOS_REGISTER_IP: ${{ vars.NACOS_REGISTER_IP || '' }}
+            IMAGE: ${{ needs.build.outputs.image }}
+
+        steps:
+            - name: Check out deployment files
+              uses: actions/checkout@v4
+
+            - name: Validate local Docker host
+              shell: bash
+              run: |
+                  set -eu
+                  [[ "$DEPLOY_PATH" =~ ^/[A-Za-z0-9._/-]+$ ]] || { echo "DEPLOY_PATH must be an absolute path" >&2; exit 1; }
+                  command -v docker >/dev/null
+                  export DOCKER_CONFIG="$RUNNER_TEMP/chat-web-dispatch-service-docker-config"
+                  printf 'DOCKER_CONFIG=%s\n' "$DOCKER_CONFIG" >> "$GITHUB_ENV"
+                  mkdir -p "$DOCKER_CONFIG"
+                  chmod 700 "$DOCKER_CONFIG"
+                  runner_compose_plugin=/home/runner/.docker/cli-plugins/docker-compose
+                  if [ -x "$runner_compose_plugin" ]; then
+                    install -d -m 0700 "$DOCKER_CONFIG/cli-plugins"
+                    install -m 0755 "$runner_compose_plugin" "$DOCKER_CONFIG/cli-plugins/docker-compose"
+                  fi
+                  docker compose version
+                  docker info >/dev/null
+                  docker network inspect chat-web-infrastructure >/dev/null
+                  mkdir -p "$DEPLOY_PATH"
+                  test -w "$DEPLOY_PATH" || { echo "$DEPLOY_PATH is not writable by the runner user" >&2; exit 1; }
+
+            - name: Install deployment files
+              shell: bash
+              run: |
+                  set -eu
+                  install -m 0644 deploy/compose.yml "$DEPLOY_PATH/compose.yml"
+                  install -m 0755 deploy/deploy.sh "$DEPLOY_PATH/deploy.sh"
+                  if [ ! -f "$DEPLOY_PATH/.env" ]; then
+                    install -m 0600 deploy/.env.example "$DEPLOY_PATH/.env"
+                  fi
+
+            - name: 清理旧版 Nacos 启动覆盖项
+              shell: bash
+              run: |
+                  set -eu
+                  sed -i -E '/^NACOS_(REQUEST_TIMEOUT|REGISTER_PORT|REGISTER_REQUIRED|GROUP|CONFIG_GROUP)=/d' "$DEPLOY_PATH/.env"
+
+            - name: 确保 Nacos 注册地址跨主机可达
+              shell: bash
+              run: |
+                  set -eu
+                  configured_ip="${DEFAULT_NACOS_REGISTER_IP:-}"
+                  sed -i "/^NACOS_REGISTER_IP=/d" "$DEPLOY_PATH/.env"
+                  if [ -z "$configured_ip" ]; then
+                      echo "NACOS_REGISTER_IP is unset; Dispatch will register the container network IP so the same-host Gateway can reach it."
+                      exit 0
+                  fi
+                  if [[ ! "$configured_ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+                      echo "NACOS_REGISTER_IP must be a valid IPv4 address: $configured_ip" >&2
+                      exit 1
+                  fi
+                  printf '\n# 注册到 Nacos 的跨主机可达地址；仅在 Gateway 能访问该地址时配置。\nNACOS_REGISTER_IP=%s\n' "$configured_ip" >> "$DEPLOY_PATH/.env"
+
+            - name: 准备 Dispatch 运行时环境
+              shell: bash
+              run: sh deploy/bootstrap-runtime.sh "$DEPLOY_PATH"
+
+            - name: Pull and deploy image
+              shell: bash
+              env:
+                  GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  set -eu
+                  # GHCR 偶发 TLS 超时，按递增间隔重试登录，避免一次网络抖动导致部署失败。
+                  attempt=1
+                  until printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username '${{ github.actor }}' --password-stdin; do
+                    [ "$attempt" -lt 8 ] || exit 1
+                    delay=$((attempt * 5))
+                    echo "GHCR login attempt $attempt failed; retrying in ${delay}s." >&2
+                    sleep "$delay"
+                    attempt=$((attempt + 1))
+                  done
+                  cd "$DEPLOY_PATH"
+                  ./deploy.sh "$IMAGE" compose.yml
+
+            - name: Verify deployed endpoint
+              shell: bash
+              run: |
+                  set -eu
+                  docker exec chat-web-dispatch-service node -e "require('http').get('http://127.0.0.1:5080/health', response => process.exit(response.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
+
+            - name: Log out from GitHub Container Registry
+              if: always()
+              shell: bash
+              run: docker logout ghcr.io >/dev/null 2>&1 || true

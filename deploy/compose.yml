@@ -1,0 +1,35 @@
+name: chat-web-service
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "30"
+
+services:
+  dispatch-service:
+    image: ${IMAGE:?IMAGE is required}
+    container_name: chat-web-dispatch-service
+    restart: unless-stopped
+    logging: *default-logging
+    init: true
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 5080
+      TZ: ${TZ:-Asia/Shanghai}
+    ports:
+      - '${HOST_BIND_IP:-0.0.0.0}:5080:5080'
+    expose:
+      - '5080'
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - infrastructure
+    stop_grace_period: 20s
+
+networks:
+  infrastructure:
+    external: true
+    name: ${DOCKER_NETWORK:-chat-web-infrastructure}
