@@ -1,0 +1,17 @@
+# 构建产物与依赖目录不参与格式化
+dist
+node_modules
+# npm 打包产物
+*.tgz
+# 自动生成的类型声明文件，由 unplugin 插件维护
+auto-imports.d.ts
+components.d.ts
+vite.config.d.ts
+vite.config.js
+*.tsbuildinfo
+# 依赖锁文件由包管理器维护
+yarn.lock
+# 静态资源与部署配置不参与格式化
+public
+nginx
+deploy
