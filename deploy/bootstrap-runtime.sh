@@ -65,6 +65,8 @@ valid_value "$namespace" || {
 
 temporary_env=$(mktemp "$DEPLOY_PATH/.env.XXXXXX")
 {
+    printf 'NODE_ENV=%s\n' "$(resolve_value NODE_ENV production)"
+    printf 'PORT=%s\n' "$(resolve_value PORT 5080)"
     printf 'TZ=%s\n' "$(resolve_value TZ Asia/Shanghai)"
     printf 'BIND_ADDRESS=%s\n' "$(resolve_value BIND_ADDRESS 0.0.0.0)"
     printf 'HOST_PORT=%s\n' "$(resolve_value HOST_PORT 5080)"

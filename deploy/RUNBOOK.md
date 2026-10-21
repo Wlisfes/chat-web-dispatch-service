@@ -14,9 +14,8 @@
 
 ## 首次部署前准备
 
-1. 在 Nacos 创建 `chat-web-dispatch-service.yaml`，至少包含 `database.chat-web-dispatch`、Redis 和 `gateway.feign` / `gateway.principal` 配置，结构参考 SRM。
-2. 创建数据库 `chat-web-dispatch` 和只授权该库的专用账号。当前没有业务表，就绪检查只验证能连上数据库。
-3. 部署主机已存在外部网络 `chat-web-infrastructure`，并且有 Finance 或 Gateway 的 `.env` 可供 `bootstrap-runtime.sh` 继承 Nacos 连接参数。
+1. 部署主机已存在外部网络 `chat-web-infrastructure`、MySQL 容器 `chat-web-mysql`，以及 Finance 或 Gateway 的 `.env` 可供继承 Nacos 连接参数。
+2. 首次部署由 `bootstrap-database.sh` 创建 `chat-web-dispatch` 库和 `chat_web_dispatch_service` 账号，由 `bootstrap-nacos-config.cjs` 写入 Nacos 配置并追加网关路由。已有配置不会被覆盖。
 
 缺少以上任一项时，新容器健康检查会失败，部署脚本会自动回滚到旧镜像（首次部署没有旧镜像可回滚）。
 

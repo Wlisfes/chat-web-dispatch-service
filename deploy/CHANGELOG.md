@@ -1,5 +1,12 @@
 # Dispatch 部署变更记录
 
+## 2026-10-21：首次部署自动准备数据库、Nacos 和网关路由
+
+- 影响机器：`chat-home-server`。
+- 变更内容：部署前在 `chat-web-mysql` 中幂等创建 `chat-web-dispatch` 和专用账号，写入 `chat-web-dispatch-service.yaml`（Redis index 5，网关凭据从 SRM 配置复制），并给生产和开发网关配置追加 `/api/dispatch`、`/feign/dispatch`。已有 Nacos 配置只校验，不覆盖。
+- 机器侧操作：无需手工建库或写 Nacos；密码保存在部署目录 `.dispatch-mysql-password`，权限 0600。
+- 验证命令：`yarn test`；部署后容器 `/health` 返回 200，网关 `/api/dispatch/health` 可访问。
+- 回滚方法：回退镜像不会删除数据库、账号或 Nacos 配置。
 ## 2026-10-21：新增构建部署流水线
 
 - 影响机器：`chat-home-server`。

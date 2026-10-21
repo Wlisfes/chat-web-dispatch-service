@@ -44,7 +44,19 @@ until docker pull "$IMAGE"; do
     attempt=$((attempt + 1))
 done
 
-# Dispatch 暂无业务表和增量 SQL；接入数据库表后再在此处执行迁移。
+# 首次部署创建独占数据库、Nacos 配置和网关路由；已存在时只校验，不覆盖人工配置。
+script_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+export DISPATCH_MYSQL_PASSWORD_FILE="$script_dir/.dispatch-mysql-password"
+sh "$script_dir/bootstrap-database.sh"
+dispatch_password_file="$DISPATCH_MYSQL_PASSWORD_FILE"
+DISPATCH_MYSQL_PASSWORD=$(tr -d '\r\n' < "$dispatch_password_file")
+export DISPATCH_MYSQL_PASSWORD
+export DISPATCH_MYSQL_USERNAME=${DISPATCH_MYSQL_USERNAME:-chat_web_dispatch_service}
+export DISPATCH_MYSQL_DATABASE=${DISPATCH_MYSQL_DATABASE:-chat-web-dispatch}
+docker run --rm --network host --env-file .env \
+    -e DISPATCH_MYSQL_PASSWORD -e DISPATCH_MYSQL_USERNAME -e DISPATCH_MYSQL_DATABASE \
+    -v "$script_dir/bootstrap-nacos-config.cjs:/app/bootstrap-nacos-config.cjs:ro" \
+    -w /app node:22-alpine node bootstrap-nacos-config.cjs
 
 if ! compose up -d --no-deps "$SERVICE"; then
     rollback

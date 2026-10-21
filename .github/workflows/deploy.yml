@@ -139,6 +139,8 @@ jobs:
                   set -eu
                   install -m 0644 deploy/compose.yml "$DEPLOY_PATH/compose.yml"
                   install -m 0755 deploy/deploy.sh "$DEPLOY_PATH/deploy.sh"
+                  install -m 0755 deploy/bootstrap-database.sh "$DEPLOY_PATH/bootstrap-database.sh"
+                  install -m 0644 deploy/bootstrap-nacos-config.cjs "$DEPLOY_PATH/bootstrap-nacos-config.cjs"
                   if [ ! -f "$DEPLOY_PATH/.env" ]; then
                     install -m 0600 deploy/.env.example "$DEPLOY_PATH/.env"
                   fi
