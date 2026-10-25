@@ -1,6 +1,6 @@
 {
     "name": "chat-web-dispatch-service",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "description": "Chat Web Dispatch 服务",
     "author": "Wlisfes",
     "private": true,
