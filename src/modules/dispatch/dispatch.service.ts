@@ -212,7 +212,7 @@ export class DispatchService implements OnApplicationBootstrap, OnApplicationShu
     private async fetchSender(message: constants.SmsChannelMessagePayload): Promise<'ack'> {
         const channel = this.channels.get(message.channelAlias)
         this.logger.log(
-            `已消费短信：messageId=${message.messageId}，channel=${message.channelAlias}，sendInterval=${channel?.sendInterval}ms，toNumber=${message.toNumber}`
+            `已消费短信：logId=${message.logId}，channel=${message.channelAlias}，sendInterval=${channel?.sendInterval}ms，toNumber=${message.toNumber}`
         )
         return 'ack'
     }
