@@ -22,9 +22,7 @@ import { setupDispatchTopology } from '@/modules/dispatch/dispatch.topology'
         RedisModule.forRoot({ database: 5 }),
         RabbitmqModule.forRoot({ vhost: SMS_RABBITMQ_VHOST, setup: setupDispatchTopology }),
         DatabaseModule,
-        // 用户认证在网关完成一次；本服务只校验网关签发的身份上下文签名。
         GatewayPrincipalModule,
-        // 只有声明 RequirePermissions 的接口才会调用 Auth 服务校验按钮权限。
         AuthorizationModule,
         HealthModule,
         DispatchModule

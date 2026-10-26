@@ -2,8 +2,10 @@ import { Injectable, Logger, OnApplicationBootstrap, OnApplicationShutdown } fro
 import { RabbitmqService } from '@wlisfes/chat-web-base-schema/rabbitmq'
 import { RedisService } from '@wlisfes/chat-web-base-schema/redis'
 import { isStale, localActions, parseChannel, planReconcile } from '@/modules/dispatch/dispatch.control'
-import * as constants from '@/modules/dispatch/dispatch.constants'
+import { DispatchSubmitCacheService } from '@/modules/dispatch/dispatch.submit.cache'
+import { DispatchSubmitRecorder } from '@/modules/dispatch/dispatch.submit.service'
 import { DispatchChannelNotifier } from '@/modules/dispatch/dispatch.notifier'
+import * as constants from '@/modules/dispatch/dispatch.constants'
 
 /**
  * 通道队列消费。
@@ -11,7 +13,7 @@ import { DispatchChannelNotifier } from '@/modules/dispatch/dispatch.notifier'
  * - 通道名单存放在 Dispatch 自己的 Redis（db 5）。SRM 的事件队列是竞争消费，只有一个实例负责写入；
  * - 写入后向 Redis Pub/Sub 发通知，每个实例只改自己的订阅，不再写 Redis；
  * - 通知丢失时按 Redis 副本对账。启用的通道订阅，停用或删除的通道取消订阅，队列和积压消息保留；
- * - 短信队列仍是竞争消费，一条短信只由一个实例处理。发送接口还没开发，当前只记录日志并确认。
+ * - 短信队列仍是竞争消费，一条短信只由一个实例处理。设备发送接口接入前，先选端口并写入 SRM 设备短信记录。
  */
 @Injectable()
 export class DispatchService implements OnApplicationBootstrap, OnApplicationShutdown {
@@ -25,10 +27,14 @@ export class DispatchService implements OnApplicationBootstrap, OnApplicationShu
     constructor(
         private readonly rabbitmqService: RabbitmqService,
         private readonly redisService: RedisService,
-        private readonly notifier: DispatchChannelNotifier
+        private readonly notifier: DispatchChannelNotifier,
+        private readonly submitRecorder: DispatchSubmitRecorder,
+        private readonly submitCache: DispatchSubmitCacheService
     ) {}
 
     public async onApplicationBootstrap(): Promise<void> {
+        // 提交缓存加载完成后再恢复通道订阅，避免启动瞬间消费短信时没有可用端口快照。
+        await this.submitCache.ready()
         await this.exclusive(async () => {
             await this.restoreFromRedis()
         })
@@ -208,11 +214,12 @@ export class DispatchService implements OnApplicationBootstrap, OnApplicationShu
         }
     }
 
-    /** 发送短信。发送接口还没开发，当前只记录日志并确认。 */
+    /** 发送短信。设备发送接口接入前，先按 msgId 幂等写入发送记录；入库失败时抛错，由 MQ 拒绝并进入死信。 */
     private async fetchSender(message: constants.SmsChannelMessagePayload): Promise<'ack'> {
         const channel = this.channels.get(message.channelAlias)
+        const payload = await this.submitRecorder.submit(message)
         this.logger.log(
-            `已消费短信：logId=${message.logId}，channel=${message.channelAlias}，sendInterval=${channel?.sendInterval}ms，toNumber=${message.toNumber}`
+            `短信已入库：msgId=${message.msgId}，msgKeyId=${payload.keyId}，channel=${message.channelAlias}，simbankKeyId=${payload.simbankKeyId}，portKeyId=${payload.portKeyId}，sendInterval=${channel?.sendInterval}ms，toNumber=${message.toNumber}`
         )
         return 'ack'
     }

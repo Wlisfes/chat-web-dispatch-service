@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto'
+import * as SrmSchema from '@wlisfes/chat-web-base-schema/chat-web-srm-mysql'
+
 /** RabbitMQ 虚拟主机；SMS、SRM、Dispatch 的 Nacos `rabbitmq.vhost` 必须都是这个值。 */
 export const SMS_RABBITMQ_VHOST = '/chat-sms'
 /** 短信交换机，通道事件经它投递。 */
@@ -17,6 +20,18 @@ export const DISPATCH_CHANNEL_SNAPSHOT_KEY = 'chat-web-dispatch:sms:channel'
 export const DISPATCH_CHANNEL_NOTIFY_CHANNEL = 'chat-web-dispatch:sms:channel:notify'
 /** 通知丢失或实例断线时，按 Redis 副本校正本地订阅的间隔。 */
 export const DISPATCH_CHANNEL_RECONCILE_INTERVAL_MS = 15_000
+
+/** SRM 提交配置变更广播。通道、端口、设备、供应商和报价变更后发布，每个 Dispatch 实例收到后重新加载提交缓存。 */
+export const SMS_ROUTE_CONFIG_EXCHANGE = 'chat.sms.route.config.exchange'
+/** 本实例接收提交配置变更的临时队列：独占、连接断开自动删除，重连时由拓扑重新声明。 */
+export const DISPATCH_SUBMIT_CONFIG_QUEUE = `chat.sms.dispatch.submit.${randomUUID()}`
+/** 变更消息丢失或实例断线时，按数据库签名校对提交缓存的间隔。 */
+export const DISPATCH_SUBMIT_RECONCILE_INTERVAL_MS = 30_000
+
+/** 提交配置变更消息：只带版本号，不带数据；收到后整体重新加载。 */
+export interface SubmitConfigChangedPayload {
+    version: number
+}
 
 /** 通道事件。SRM 和 Dispatch 各声明一份，字段改动时要同步。 */
 /** 全量通道快照。SRM 和 Dispatch 各声明一份，字段改动时要同步。 */
@@ -51,7 +66,7 @@ export interface ChannelNotifyPayload {
 /** SMS 提交的短信。SMS、Channel、Dispatch 各声明一份，字段改动时要同步。 */
 export interface MessageSubmitPayload {
     /** 本次提交生成的 UUID 标识，当前不落库。 */
-    logId: string
+    msgId: string
     /** 提交短信的客户主键 */
     userKeyId: number
     /** 提交短信的客户名称 */
@@ -95,4 +110,37 @@ export interface SmsChannelMessagePayload extends MessageSubmitPayload {
     channelKeyId: number
     channelAlias: string
     routedAt: string
+}
+
+/** 提交缓存中的可用端口，以及写入发送记录需要的通道、设备和供应商快照。 */
+export interface SimbankSender {
+    channelKeyId: number
+    channelAlias: string
+    channelOwnerUserUid: string
+    portKeyId: number
+    port: number
+    sim: string | null
+    iccid: string | null
+    simbankKeyId: number
+    simbankName: string
+    simbankAlias: string | null
+    userKeyId: number
+    userName: string
+    userAlias: string | null
+    ownerUserUid: string
+    weight: number
+}
+
+/** 提交缓存中的报价时间段：按发送当时的时间挑选生效报价。 */
+export interface SimbankQuoteCandidate {
+    downUsd: number
+    effectiveTime: number
+    expiryTime: number | null
+}
+
+/** 发送记录写入或复用后的定位信息。 */
+export interface SimbankMessageResult {
+    keyId: number
+    portKeyId: number
+    simbankKeyId: number
 }

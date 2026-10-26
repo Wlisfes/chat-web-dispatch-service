@@ -16,4 +16,7 @@ export async function setupDispatchTopology(channel: ConfirmChannel): Promise<vo
         overflow: 'drop-head'
     })
     await channel.bindQueue(constants.SMS_CHANNEL_SNAPSHOT_QUEUE, constants.SMS_EXCHANGE, constants.SMS_CHANNEL_SNAPSHOT_ROUTING_KEY)
+    await channel.assertExchange(constants.SMS_ROUTE_CONFIG_EXCHANGE, 'fanout', { durable: true })
+    await channel.assertQueue(constants.DISPATCH_SUBMIT_CONFIG_QUEUE, { durable: false, exclusive: true, autoDelete: true })
+    await channel.bindQueue(constants.DISPATCH_SUBMIT_CONFIG_QUEUE, constants.SMS_ROUTE_CONFIG_EXCHANGE, '')
 }
