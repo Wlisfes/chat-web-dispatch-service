@@ -3,9 +3,9 @@
 ## 2026-10-26：发送记录改为写入 SRM 设备短信表
 
 - 影响机器：`chat-home-server`。
-- 变更内容：Dispatch 的 MySQL 配置键从 `database.chat-web-dispatch` 改为 `database.chat-web-srm`，只注册 `TbSrmSimbankMessage`；不再使用独立的 `chat-web-dispatch` 业务库。
-- 机器侧操作：部署脚本给 `chat_web_dispatch_service` 授予 `chat-web-srm.tb_srm_simbank_message` 的 `SELECT`、`INSERT`、`UPDATE`，收回旧 `chat-web-dispatch` 库权限，并把 Nacos 中旧的 `database.chat-web-dispatch` 节点替换为 `database.chat-web-srm`。
-- 验证命令：`yarn test`；部署后 `SHOW GRANTS FOR 'chat_web_dispatch_service'@'%'` 只包含 `USAGE` 和发送记录表权限，容器 `/health` 返回 200。
+- 变更内容：Dispatch 的 MySQL 配置键从 `database.chat-web-dispatch` 改为 `database.chat-web-srm`，注册发送记录及发送快照所需的 SRM 实体；不再使用独立的 `chat-web-dispatch` 业务库。
+- 机器侧操作：部署脚本给 `chat_web_dispatch_service` 授予 `chat-web-srm.tb_srm_simbank_message` 的 `SELECT`、`INSERT`、`UPDATE`，以及 `tb_srm_channel`、`tb_srm_channel_port`、`tb_srm_simbank_port`、`tb_srm_simbank`、`tb_srm_user`、`tb_srm_simbank_quote` 的 `SELECT`，收回旧 `chat-web-dispatch` 库权限，并把 Nacos 中旧的 `database.chat-web-dispatch` 节点替换为 `database.chat-web-srm`。
+- 验证命令：`yarn test`；部署后 `SHOW GRANTS FOR 'chat_web_dispatch_service'@'%'` 只包含 `USAGE`、发送记录写权限和发送快照只读权限，容器 `/health` 返回 200。
 - 回滚方法：回退镜像前恢复 Nacos 的 `database.chat-web-dispatch` 节点，并重新授予旧库权限；SRM 中已写入的发送记录保留。
 
 ## 2026-10-21：首次部署自动准备数据库、Nacos 和网关路由

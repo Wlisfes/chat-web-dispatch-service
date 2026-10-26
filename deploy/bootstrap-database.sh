@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-# Dispatch 只读写 SRM 设备短信记录表，不建库。账号已存在时只补齐授权，不改密码。
+# Dispatch 只写 SRM 设备短信记录表，并读取发送所需快照，不建库。账号已存在时只补齐授权，不改密码。
 USERNAME=${DISPATCH_MYSQL_USERNAME:-chat_web_dispatch_service}
 MYSQL_CONTAINER=${DISPATCH_MYSQL_CONTAINER:-chat-web-mysql}
 PASSWORD_FILE=${DISPATCH_MYSQL_PASSWORD_FILE:-/opt/chat-web-dispatch-service/.dispatch-mysql-password}
@@ -34,9 +34,15 @@ fi
 sql=$(cat <<SQL
 REVOKE ALL PRIVILEGES ON \`$LEGACY_DATABASE\`.* FROM '$USERNAME'@'%';
 GRANT SELECT, INSERT, UPDATE ON \`chat-web-srm\`.\`tb_srm_simbank_message\` TO '$USERNAME'@'%';
+GRANT SELECT ON \`chat-web-srm\`.\`tb_srm_channel\` TO '$USERNAME'@'%';
+GRANT SELECT ON \`chat-web-srm\`.\`tb_srm_channel_port\` TO '$USERNAME'@'%';
+GRANT SELECT ON \`chat-web-srm\`.\`tb_srm_simbank_port\` TO '$USERNAME'@'%';
+GRANT SELECT ON \`chat-web-srm\`.\`tb_srm_simbank\` TO '$USERNAME'@'%';
+GRANT SELECT ON \`chat-web-srm\`.\`tb_srm_user\` TO '$USERNAME'@'%';
+GRANT SELECT ON \`chat-web-srm\`.\`tb_srm_simbank_quote\` TO '$USERNAME'@'%';
 FLUSH PRIVILEGES;
 SQL
 )
 printf '%s\n' "$sql" | mysql_root
 
-echo "Dispatch 已授权读写 chat-web-srm.tb_srm_simbank_message"
+echo "Dispatch 已授权写入发送记录，并读取 SRM 发送快照"
