@@ -48,15 +48,48 @@ export interface ChannelNotifyPayload {
     deleted: boolean
 }
 
-/** 通道队列中的短信。SRM 和 Dispatch 各声明一份，字段改动时要同步。 */
-export interface SmsChannelMessagePayload {
-    messageId: string
+/** SMS 提交的短信。SMS、Channel、Dispatch 各声明一份，字段改动时要同步。 */
+export interface MessageSubmitPayload {
+    /** 本次提交生成的 UUID 标识，当前不落库。 */
+    logId: string
+    /** 提交短信的客户主键 */
+    userKeyId: number
+    /** 提交短信的客户名称 */
+    userName: string
+    /** 提交短信的应用主键：路由的应用绑定按它查询 */
     appKeyId: number
-    type: string
-    countryKeyId: number
+    /** 提交短信的应用ID */
+    appId: string
+    /** 短信类型：MRKT、NTFY、SOTP */
+    type: 'MRKT' | 'NTFY' | 'SOTP'
+    /** 方向：Skyline 国家/地区主键；SMS 可能传字符串，选路前统一转数字 */
+    countryKeyId: number | string
+    /** 号码所在国家的 MCC */
+    mcc: string
+    /** 接收号码：含国际区号，不带 + 号。 */
     toNumber: string
+    /** 短信内容。 */
     content: string
-    submittedAt: string
+    /** 内容字符数 */
+    contentLength: number
+    /** 编码方式 */
+    encoding: 'UCS2' | 'GSM7'
+    /** 计费条数 */
+    segments: number
+    /** 客户售价：USD总额(放大百万倍存储) */
+    price: number
+    /** 提交时间，ISO-8601。 */
+    submitTime: string
+    /** 提交短信任务的ID */
+    taskId?: number
+    /** 提交短信任务的名称 */
+    taskName?: string
+    /** 提交短信的模板ID */
+    templateId?: string
+}
+
+/** 通道队列中的短信：Channel 选路后在提交短信上附加路由和通道。Channel 和 Dispatch 各声明一份，字段改动时要同步。 */
+export interface SmsChannelMessagePayload extends MessageSubmitPayload {
     routeKeyId: number
     routeAlias: string
     channelKeyId: number
