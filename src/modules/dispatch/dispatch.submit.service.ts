@@ -83,7 +83,9 @@ export class DispatchSubmitRecorder {
             where: { msgId },
             select: { keyId: true, portKeyId: true, simbankKeyId: true }
         })
-        if (!record) throw new Error(`发送记录写入后未找到：msgId=${msgId}`)
+        if (!record) {
+            throw new Error(`发送记录写入后未找到：msgId=${msgId}`)
+        }
         return record
     }
 

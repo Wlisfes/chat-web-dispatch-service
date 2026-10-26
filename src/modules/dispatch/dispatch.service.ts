@@ -217,9 +217,9 @@ export class DispatchService implements OnApplicationBootstrap, OnApplicationShu
     /** 发送短信。设备发送接口接入前，先按 msgId 幂等写入发送记录；入库失败时抛错，由 MQ 拒绝并进入死信。 */
     private async fetchSender(message: constants.SmsChannelMessagePayload): Promise<'ack'> {
         const channel = this.channels.get(message.channelAlias)
-        const record = await this.submitRecorder.submit(message)
+        const payload = await this.submitRecorder.submit(message)
         this.logger.log(
-            `短信已入库：msgId=${message.msgId}，recordKeyId=${record.keyId}，channel=${message.channelAlias}，simbankKeyId=${record.simbankKeyId}，portKeyId=${record.portKeyId}，sendInterval=${channel?.sendInterval}ms，toNumber=${message.toNumber}`
+            `短信已入库：msgId=${message.msgId}，msgKeyId=${payload.keyId}，channel=${message.channelAlias}，simbankKeyId=${payload.simbankKeyId}，portKeyId=${payload.portKeyId}，sendInterval=${channel?.sendInterval}ms，toNumber=${message.toNumber}`
         )
         return 'ack'
     }
