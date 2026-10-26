@@ -7,7 +7,7 @@
 | 容器                   | `chat-web-dispatch-service`                                    |
 | 端口                   | `5080`                                                         |
 | Nacos Data ID / 服务名 | `chat-web-dispatch-service.yaml` / `chat-web-dispatch-service` |
-| 数据库配置键           | `database.chat-web-dispatch`                                   |
+| 数据库配置键           | `database.chat-web-srm`                                        |
 | Redis                  | index `5`                                                      |
 | Feign Gateway          | `http://chat-web-gateway-service:5000`                         |
 | 部署目录               | `/opt/chat-web-dispatch-service`                               |
@@ -15,7 +15,7 @@
 ## 首次部署前准备
 
 1. 部署主机已存在外部网络 `chat-web-infrastructure`、MySQL 容器 `chat-web-mysql`，以及 Finance 或 Gateway 的 `.env` 可供继承 Nacos 连接参数。
-2. 首次部署由 `bootstrap-database.sh` 创建 `chat-web-dispatch` 库和 `chat_web_dispatch_service` 账号，由 `bootstrap-nacos-config.cjs` 写入 Nacos 配置并追加网关路由。已有配置不会被覆盖。
+2. 部署时由 `bootstrap-database.sh` 给 `chat_web_dispatch_service` 授权读写 `chat-web-srm.tb_srm_simbank_message`，并收回旧 `chat-web-dispatch` 库权限；由 `bootstrap-nacos-config.cjs` 写入或替换为 `database.chat-web-srm`，并追加网关路由。其他已有配置不会被覆盖。
 
 缺少以上任一项时，新容器健康检查会失败，部署脚本会自动回滚到旧镜像（首次部署没有旧镜像可回滚）。
 

@@ -1,6 +1,6 @@
 'use strict'
 
-/** 部署前准备 Dispatch Nacos 配置，并给网关追加 /api/dispatch 与 /feign/dispatch。已有配置只校验，不覆盖。 */
+/** 部署前准备 Dispatch Nacos 配置，并给网关追加 /api/dispatch 与 /feign/dispatch。已有配置只补齐 SRM 库连接，不覆盖其他配置。 */
 
 function required(name, environment = process.env) {
     const value = environment[name]
@@ -74,7 +74,7 @@ function createDispatchConfig(source, environment = process.env) {
     const redis = topLevelBlock(source, 'redis')
     if (!gateway || !redis) throw new Error('来源 Nacos 配置缺少 gateway 或 redis，无法生成 Dispatch 配置')
     const database = required('DISPATCH_MYSQL_DATABASE', environment)
-    if (database !== 'chat-web-dispatch') throw new Error('DISPATCH_MYSQL_DATABASE 必须为 chat-web-dispatch')
+    if (database !== 'chat-web-srm') throw new Error('DISPATCH_MYSQL_DATABASE 必须为 chat-web-srm')
     return `# 服务监听配置。
 server:
   # 容器内 HTTP 监听端口。
@@ -83,9 +83,18 @@ server:
 # 服务间调用与网关身份上下文验签配置；从现有服务复制，必须与 Gateway 保持一致。
 ${gateway}
 
-# Dispatch 服务 MySQL 数据库配置；账号只授权 chat-web-dispatch 库。
-database:
-  chat-web-dispatch:
+# Dispatch 读写 SRM 设备短信记录；账号只授权 tb_srm_simbank_message。
+${databaseConfig(environment)}
+# Redis 连接配置；Dispatch 独占 index 5。
+${redis.replace(/database:\s*\d+/, 'database: 5')}
+`
+}
+
+function databaseConfig(environment = process.env) {
+    const database = required('DISPATCH_MYSQL_DATABASE', environment)
+    if (database !== 'chat-web-srm') throw new Error('DISPATCH_MYSQL_DATABASE 必须为 chat-web-srm')
+    return `database:
+  chat-web-srm:
     host: ${scalar(environment.DISPATCH_MYSQL_HOST?.trim() || 'mysql')}
     port: ${Number(environment.DISPATCH_MYSQL_PORT || 3306)}
     database: ${scalar(database)}
@@ -93,15 +102,25 @@ database:
     password: ${scalar(required('DISPATCH_MYSQL_PASSWORD', environment))}
     charset: "utf8mb4"
     timezone: "+08:00"
-
-# Redis 连接配置；Dispatch 独占 index 5。
-${redis.replace(/database:\s*\d+/, 'database: 5')}
 `
+}
+
+/** 旧配置连接 chat-web-dispatch 时替换为 SRM 库；已有 chat-web-srm 时保留人工配置。 */
+function ensureSrmDatabaseConfig(content, environment = process.env) {
+    if (content.includes('chat-web-srm:')) return content
+    const lines = content.replace(/\r\n?/g, '\n').split('\n')
+    const start = lines.findIndex(line => line === 'database:')
+    if (start < 0) return `${content.trimEnd()}\n\n# Dispatch 读写 SRM 设备短信记录；账号只授权 tb_srm_simbank_message。\n${databaseConfig(environment)}`
+    let end = start + 1
+    while (end < lines.length && (!lines[end] || /^\s/.test(lines[end]))) end += 1
+    const replacement = databaseConfig(environment).trimEnd().split('\n')
+    lines.splice(start, end - start, ...replacement)
+    return `${lines.join('\n').replace(/\n*$/, '')}\n`
 }
 
 function validateDispatchConfig(content) {
     if (!content.includes('port: 5080')) throw new Error('Dispatch Nacos 配置缺少 server.port: 5080')
-    if (!content.includes('chat-web-dispatch:')) throw new Error('Dispatch Nacos 配置缺少 database.chat-web-dispatch')
+    if (!content.includes('chat-web-srm:')) throw new Error('Dispatch Nacos 配置缺少 database.chat-web-srm')
     if (!/database:\s*5/.test(content)) throw new Error('Dispatch Redis database 必须为 5')
     if (!content.includes('service_token:') || !content.includes('secret:')) throw new Error('Dispatch Nacos 配置缺少网关凭据')
     return content
@@ -145,7 +164,9 @@ async function ensureDispatchConfig(environment = process.env) {
     const dataId = environment.NACOS_CONFIG_DATA_ID?.trim() || 'chat-web-dispatch-service.yaml'
     const existing = await readConfig(dataId, environment)
     if (existing) {
-        validateDispatchConfig(existing)
+        const updated = ensureSrmDatabaseConfig(existing, environment)
+        validateDispatchConfig(updated)
+        if (updated !== existing) await writeConfig(dataId, updated, environment)
         return false
     }
     const source = await readConfig('chat-web-srm-service.yaml', environment)
@@ -181,4 +202,4 @@ if (require.main === module) {
     })
 }
 
-module.exports = { createDispatchConfig, ensureGatewayRoute, validateDispatchConfig, DISPATCH_ROUTES }
+module.exports = { createDispatchConfig, ensureGatewayRoute, ensureSrmDatabaseConfig, validateDispatchConfig, DISPATCH_ROUTES }

@@ -51,7 +51,7 @@ export interface ChannelNotifyPayload {
 /** SMS 提交的短信。SMS、Channel、Dispatch 各声明一份，字段改动时要同步。 */
 export interface MessageSubmitPayload {
     /** 本次提交生成的 UUID 标识，当前不落库。 */
-    logId: string
+    msgId: string
     /** 提交短信的客户主键 */
     userKeyId: number
     /** 提交短信的客户名称 */
