@@ -1,8 +1,8 @@
 import { Injectable, Logger, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common'
 import { DataSource, EntityManager, In, InjectDataSource } from '@wlisfes/chat-web-base-schema/database'
+import { SubmitBalancer, selectQuote, submitQuoteKey } from '@/modules/dispatch/dispatch.submit'
 import { RabbitmqService } from '@wlisfes/chat-web-base-schema/rabbitmq'
 import * as SrmSchema from '@wlisfes/chat-web-base-schema/chat-web-srm-mysql'
-import { SubmitBalancer, selectQuote, submitQuoteKey } from '@/modules/dispatch/dispatch.submit'
 import * as constants from '@/modules/dispatch/dispatch.constants'
 
 interface SubmitSnapshot {
@@ -42,6 +42,7 @@ function groupBy<K, T>(items: T[], key: (item: T) => K): Map<K, T[]> {
  *
  * - 启动时全量加载通道端口、设备、供应商和报价；
  * - 收到 SRM 提交配置变更后整体重新加载，定时比较表签名兜底；
+ * - 只缓存满足发送条件的端口：设备启用且在线，端口启用、已插卡、已激活且在线；
  * - 发送短信时只读内存选择端口和成本，不再逐条查询配置表。
  */
 @Injectable()
@@ -165,7 +166,8 @@ export class DispatchSubmitCacheService implements OnApplicationBootstrap, OnApp
                 keyId: In(keyIds),
                 status: SrmSchema.TbSrmSimbankPortStatus.ENABLE,
                 insertStatus: SrmSchema.TbSrmSimbankPortInsertStatus.INSERTED,
-                activateStatus: SrmSchema.TbSrmSimbankPortActivateStatus.ACTIVE
+                activateStatus: SrmSchema.TbSrmSimbankPortActivateStatus.ACTIVE,
+                online: SrmSchema.TbSrmSimbankPortOnline.ONLINE
             },
             select: { keyId: true, simbankKeyId: true, port: true, sim: true, iccid: true }
         })
@@ -174,7 +176,7 @@ export class DispatchSubmitCacheService implements OnApplicationBootstrap, OnApp
     private async loadSimbanks(manager: EntityManager, keyIds: number[]): Promise<SrmSchema.TbSrmSimbank[]> {
         if (keyIds.length === 0) return []
         return manager.find(SrmSchema.TbSrmSimbank, {
-            where: { keyId: In(keyIds), status: SrmSchema.TbSrmSimbankStatus.ENABLE },
+            where: { keyId: In(keyIds), status: SrmSchema.TbSrmSimbankStatus.ENABLE, online: SrmSchema.TbSrmSimbankOnline.ONLINE },
             select: { keyId: true, name: true, alias: true, userKeyId: true, ownerUserUid: true }
         })
     }

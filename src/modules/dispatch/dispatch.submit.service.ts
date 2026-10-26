@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { DataSource, InjectDataSource } from '@wlisfes/chat-web-base-schema/database'
-import * as SrmSchema from '@wlisfes/chat-web-base-schema/chat-web-srm-mysql'
 import { DispatchSubmitCacheService } from '@/modules/dispatch/dispatch.submit.cache'
+import * as SrmSchema from '@wlisfes/chat-web-base-schema/chat-web-srm-mysql'
 import * as constants from '@/modules/dispatch/dispatch.constants'
 
 /** 从提交缓存选择端口，并按 msgId 幂等写入 SRM 设备短信记录。 */
