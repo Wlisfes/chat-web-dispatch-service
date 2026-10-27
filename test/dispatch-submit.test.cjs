@@ -5,27 +5,32 @@ const { SubmitBalancer, selectQuote } = require('../dist/modules/dispatch/dispat
 
 function message(overrides = {}) {
     return {
-        msgId: 'c2f45ce1-30a5-4d14-b0d7-cb76b10f0e21',
-        userKeyId: 10241010,
-        userName: '客户',
-        appKeyId: 1002009,
-        appId: 'APP',
-        type: 'MRKT',
-        countryKeyId: 1077,
-        mcc: '460',
-        toNumber: '8613800138000',
-        content: 'hello',
-        contentLength: 5,
-        encoding: 'GSM7',
-        segments: 2,
-        price: 108200,
-        submitTime: '2026-10-26T00:00:00.000Z',
-        routeKeyId: 1,
-        routeAlias: 'R1',
-        channelKeyId: 1001,
-        channelAlias: 'C1',
-        routedAt: '2026-10-26T00:00:01.000Z',
-        ...overrides
+        message: {
+            msgId: 'c2f45ce1-30a5-4d14-b0d7-cb76b10f0e21',
+            userKeyId: 10241010,
+            userName: '客户',
+            appKeyId: 1002009,
+            appId: 'APP',
+            type: 'MRKT',
+            countryKeyId: 1077,
+            mcc: '460',
+            toNumber: '8613800138000',
+            content: 'hello',
+            contentLength: 5,
+            encoding: 'GSM7',
+            segments: 2,
+            price: 108200,
+            submitTime: '2026-10-26T00:00:00.000Z',
+            ...overrides.message
+        },
+        route: {
+            routeKeyId: 1,
+            routeAlias: 'R1',
+            channelKeyId: 1001,
+            channelAlias: 'C1',
+            submitTime: '2026-10-26T00:00:01.000Z',
+            ...overrides.route
+        }
     }
 }
 

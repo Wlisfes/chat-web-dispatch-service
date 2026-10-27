@@ -1,17 +1,18 @@
 import * as constants from '@/modules/dispatch/dispatch.constants'
+import type { ChannelEventPayload } from '@wlisfes/chat-web-base-schema/rabbitmq'
 
 /** 对账结果。调用方只调整本进程订阅，不写 Redis。 */
 export interface ReconcilePlan {
     /** Redis 中比本地新的通道。 */
-    adopt: constants.SmsChannelEventPayload[]
+    adopt: ChannelEventPayload[]
     /** 本地有、Redis 没有的通道，视为已删除。 */
-    remove: constants.SmsChannelEventPayload[]
+    remove: ChannelEventPayload[]
     /** 版本不比本地新，只校正订阅是否还在。 */
-    repair: constants.SmsChannelEventPayload[]
+    repair: ChannelEventPayload[]
 }
 
 /** 解析 Redis 中的通道副本。损坏的字段不能当成删除。 */
-export function parseChannel(value: string): constants.SmsChannelEventPayload | undefined {
+export function parseChannel(value: string): ChannelEventPayload | undefined {
     let parsed: unknown
     try {
         parsed = JSON.parse(value)
@@ -19,7 +20,7 @@ export function parseChannel(value: string): constants.SmsChannelEventPayload | 
         return undefined
     }
     if (!parsed || typeof parsed !== 'object') return undefined
-    const channel = parsed as constants.SmsChannelEventPayload
+    const channel = parsed as ChannelEventPayload
     if (typeof channel.alias !== 'string' || !channel.alias.trim() || !Number.isInteger(channel.version)) return undefined
     if (typeof channel.deleted !== 'boolean') return undefined
     if (typeof channel.queue !== 'string' || !channel.queue) channel.queue = `chat.sms.channel.${channel.alias}`
@@ -42,7 +43,7 @@ export function parseNotify(value: string): constants.ChannelNotifyPayload | und
 }
 
 /** 本地版本不比传入版本旧时，不能用旧事件覆盖。 */
-export function isStale(current: constants.SmsChannelEventPayload | undefined, version: number): boolean {
+export function isStale(current: ChannelEventPayload | undefined, version: number): boolean {
     return Boolean(current && current.version >= version)
 }
 
@@ -50,10 +51,10 @@ export function isStale(current: constants.SmsChannelEventPayload | undefined, v
  * 以 Redis 副本为准生成订阅校正计划。
  * 某个字段解析失败时保留本地订阅，避免一条坏数据把通道取消掉。
  */
-export function planReconcile(local: ReadonlyMap<string, constants.SmsChannelEventPayload>, remote: Record<string, string>): ReconcilePlan {
-    const adopt: constants.SmsChannelEventPayload[] = []
-    const remove: constants.SmsChannelEventPayload[] = []
-    const repair: constants.SmsChannelEventPayload[] = []
+export function planReconcile(local: ReadonlyMap<string, ChannelEventPayload>, remote: Record<string, string>): ReconcilePlan {
+    const adopt: ChannelEventPayload[] = []
+    const remove: ChannelEventPayload[] = []
+    const repair: ChannelEventPayload[] = []
     const seen = new Set<string>()
     for (const [alias, raw] of Object.entries(remote)) {
         const channel = parseChannel(raw)
@@ -78,7 +79,7 @@ export type LocalActionType = 'adopt' | 'drop' | 'sync'
 
 export interface LocalAction {
     type: LocalActionType
-    channel: constants.SmsChannelEventPayload
+    channel: ChannelEventPayload
 }
 
 export function localActions(plan: ReconcilePlan): LocalAction[] {
