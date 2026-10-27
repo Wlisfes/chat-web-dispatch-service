@@ -1,9 +1,10 @@
 import { Injectable, Logger, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
-import { ClientProxy, ClientProxyFactory, Transport } from '@nestjs/microservices'
-import { OBSERVE_PATTERN, type ObservePingPayload, type ObservePingResult } from '@wlisfes/chat-web-base-schema/observe'
-import { firstValueFrom, timeout } from 'rxjs'
+import { ObservePingPayload, ObservePingResult, ObserveSubmitPayload, ObserveSubmitResult } from '@wlisfes/chat-web-base-schema/observe'
 import { resolveObserveClientConfig, type ObserveClientOptions } from '@/modules/observe/observe.constants'
+import { ClientProxy, ClientProxyFactory, Transport } from '@nestjs/microservices'
+import { OBSERVE_PATTERN } from '@wlisfes/chat-web-base-schema/observe'
+import { ConfigService } from '@nestjs/config'
+import { firstValueFrom, timeout } from 'rxjs'
 
 /** Observe TCP 客户端：Dispatch 通过它调用 Observe 模拟发送。连接按需建立，断开后下次调用自动重连。 */
 @Injectable()
@@ -34,6 +35,11 @@ export class ObserveClientService implements OnApplicationBootstrap, OnApplicati
             timestamp: new Date().toISOString()
         }
         return await this.send<ObservePingResult>(OBSERVE_PATTERN.PING, payload)
+    }
+
+    /** 提交模拟发送；连接失败或超时抛错，由调用方决定如何记录。 */
+    public async submit(payload: ObserveSubmitPayload): Promise<ObserveSubmitResult> {
+        return await this.send<ObserveSubmitResult>(OBSERVE_PATTERN.SUBMIT, payload)
     }
 
     private async send<T>(pattern: string, payload: unknown): Promise<T> {

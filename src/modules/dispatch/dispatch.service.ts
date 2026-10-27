@@ -4,6 +4,7 @@ import { RedisService } from '@wlisfes/chat-web-base-schema/redis'
 import { isStale, localActions, parseChannel, planReconcile } from '@/modules/dispatch/dispatch.control'
 import { DispatchSubmitCacheService } from '@/modules/dispatch/dispatch.submit.cache'
 import { DispatchSubmitRecorder } from '@/modules/dispatch/dispatch.submit.service'
+import { DispatchSendService } from '@/modules/dispatch/dispatch.send.service'
 import { DispatchChannelNotifier } from '@/modules/dispatch/dispatch.notifier'
 import * as constants from '@/modules/dispatch/dispatch.constants'
 
@@ -13,7 +14,7 @@ import * as constants from '@/modules/dispatch/dispatch.constants'
  * - 通道名单存放在 Dispatch 自己的 Redis（db 5）。SRM 的事件队列是竞争消费，只有一个实例负责写入；
  * - 写入后向 Redis Pub/Sub 发通知，每个实例只改自己的订阅，不再写 Redis；
  * - 通知丢失时按 Redis 副本对账。启用的通道订阅，停用或删除的通道取消订阅，队列和积压消息保留；
- * - 短信队列仍是竞争消费，一条短信只由一个实例处理。设备发送接口接入前，先选端口并写入 SRM 设备短信记录。
+ * - 短信队列仍是竞争消费，一条短信只由一个实例处理。选端口写入 SRM 设备短信记录后，通过 Observe 模拟设备发送并写回结果。
  */
 @Injectable()
 export class DispatchService implements OnApplicationBootstrap, OnApplicationShutdown {
@@ -29,7 +30,8 @@ export class DispatchService implements OnApplicationBootstrap, OnApplicationShu
         private readonly redisService: RedisService,
         private readonly notifier: DispatchChannelNotifier,
         private readonly submitRecorder: DispatchSubmitRecorder,
-        private readonly submitCache: DispatchSubmitCacheService
+        private readonly submitCache: DispatchSubmitCacheService,
+        private readonly sendService: DispatchSendService
     ) {}
 
     public async onApplicationBootstrap(): Promise<void> {
@@ -214,14 +216,27 @@ export class DispatchService implements OnApplicationBootstrap, OnApplicationShu
         }
     }
 
-    /** 发送短信。设备发送接口接入前，先按 msgId 幂等写入发送记录；入库失败时抛错，由 MQ 拒绝并进入死信。 */
+    /**
+     * 发送短信：按 msgId 幂等写入发送记录，再调用 Observe 模拟设备发送并写回结果。
+     * 入库失败时抛错，由 MQ 拒绝并进入死信；发送失败只写入发送记录，不重新入队。
+     */
     private async fetchSender(payload: ChannelQueuePayload): Promise<'ack'> {
         const { message, route } = payload
-        const channel = this.channels.get(route.channelAlias)
+        const startedAt = performance.now()
         const record = await this.submitRecorder.submit(payload)
-        this.logger.log(
-            `短信已入库：msgId=${message.msgId}，msgKeyId=${record.keyId}，channel=${route.channelAlias}，simbankKeyId=${record.simbankKeyId}，portKeyId=${record.portKeyId}，sendInterval=${channel?.sendInterval}ms，toNumber=${message.toNumber}`
-        )
+        const outcome = await this.sendService.send(message.msgId, record)
+        const summary = `msgId=${message.msgId}，msgKeyId=${record.keyId}，channel=${route.channelAlias}，simbankKeyId=${record.simbankKeyId}，portKeyId=${record.portKeyId}，toNumber=${message.toNumber}`
+        const elapsed = `耗时=${Math.round(performance.now() - startedAt)}ms`
+        if (outcome.skipped) {
+            this.logger.log(`短信已有发送结果，跳过重复发送：${summary}，sendStatus=${outcome.sendStatus}，${elapsed}`)
+        } else if (outcome.sendStatus === 'success') {
+            this.logger.log(`短信发送成功：${summary}，statusCode=${outcome.statusCode}，${elapsed}`)
+        } else {
+            this.logger.warn(
+                `短信发送失败：${summary}，sendStatus=${outcome.sendStatus}，statusCode=${outcome.statusCode}，原因=${outcome.statusMessage}，${elapsed}`
+            )
+        }
+        if (outcome.saved === false) this.logger.warn(`发送结果未写入，记录状态已变更：msgId=${message.msgId}，msgKeyId=${record.keyId}`)
         return 'ack'
     }
 }
