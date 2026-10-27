@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto'
-import * as SrmSchema from '@wlisfes/chat-web-base-schema/chat-web-srm-mysql'
 
 /** RabbitMQ 虚拟主机；SMS、SRM、Dispatch 的 Nacos `rabbitmq.vhost` 必须都是这个值。 */
 export const SMS_RABBITMQ_VHOST = '/chat-sms'
@@ -28,88 +27,11 @@ export const DISPATCH_SUBMIT_CONFIG_QUEUE = `chat.sms.dispatch.submit.${randomUU
 /** 变更消息丢失或实例断线时，按数据库签名校对提交缓存的间隔。 */
 export const DISPATCH_SUBMIT_RECONCILE_INTERVAL_MS = 30_000
 
-/** 提交配置变更消息：只带版本号，不带数据；收到后整体重新加载。 */
-export interface SubmitConfigChangedPayload {
-    version: number
-}
-
-/** 通道事件。SRM 和 Dispatch 各声明一份，字段改动时要同步。 */
-/** 全量通道快照。SRM 和 Dispatch 各声明一份，字段改动时要同步。 */
-export interface SmsChannelSnapshotPayload {
-    version: number
-    channels: SmsChannelEventPayload[]
-}
-
-export interface SmsChannelEventPayload {
-    channelKeyId: number
-    alias: string
-    /** 通道队列名称：chat.sms.channel.<通道别名>。 */
-    queue: string
-    type: string
-    countryKeyId: number
-    status: string
-    sendInterval: number
-    maxRetry: number
-    /** true 表示通道已删除。 */
-    deleted: boolean
-    /** 发布时间毫秒数；只接受比副本更新的版本。 */
-    version: number
-}
-
 /** 实例间通知。不携带通道全文，收到后按别名读取 Redis 副本。 */
 export interface ChannelNotifyPayload {
     alias: string
     version: number
     deleted: boolean
-}
-
-/** SMS 提交的短信。SMS、Channel、Dispatch 各声明一份，字段改动时要同步。 */
-export interface MessageSubmitPayload {
-    /** 本次提交生成的 UUID 标识，当前不落库。 */
-    msgId: string
-    /** 提交短信的客户主键 */
-    userKeyId: number
-    /** 提交短信的客户名称 */
-    userName: string
-    /** 提交短信的应用主键：路由的应用绑定按它查询 */
-    appKeyId: number
-    /** 提交短信的应用ID */
-    appId: string
-    /** 短信类型：MRKT、NTFY、SOTP */
-    type: 'MRKT' | 'NTFY' | 'SOTP'
-    /** 方向：Skyline 国家/地区主键；SMS 可能传字符串，选路前统一转数字 */
-    countryKeyId: number | string
-    /** 号码所在国家的 MCC */
-    mcc: string
-    /** 接收号码：含国际区号，不带 + 号。 */
-    toNumber: string
-    /** 短信内容。 */
-    content: string
-    /** 内容字符数 */
-    contentLength: number
-    /** 编码方式 */
-    encoding: 'UCS2' | 'GSM7'
-    /** 计费条数 */
-    segments: number
-    /** 客户售价：USD总额(放大百万倍存储) */
-    price: number
-    /** 提交时间，ISO-8601。 */
-    submitTime: string
-    /** 提交短信任务的ID */
-    taskId?: number
-    /** 提交短信任务的名称 */
-    taskName?: string
-    /** 提交短信的模板ID */
-    templateId?: string
-}
-
-/** 通道队列中的短信：Channel 选路后在提交短信上附加路由和通道。Channel 和 Dispatch 各声明一份，字段改动时要同步。 */
-export interface SmsChannelMessagePayload extends MessageSubmitPayload {
-    routeKeyId: number
-    routeAlias: string
-    channelKeyId: number
-    channelAlias: string
-    routedAt: string
 }
 
 /** 提交缓存中的可用端口，以及写入发送记录需要的通道、设备和供应商快照。 */

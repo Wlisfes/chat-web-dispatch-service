@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import type { MessageSubmitPayload, ChannelQueuePayload } from '@wlisfes/chat-web-base-schema/rabbitmq'
 import { DataSource, InjectDataSource } from '@wlisfes/chat-web-base-schema/database'
 import { DispatchSubmitCacheService } from '@/modules/dispatch/dispatch.submit.cache'
 import * as SrmSchema from '@wlisfes/chat-web-base-schema/chat-web-srm-mysql'
@@ -13,9 +14,9 @@ export class DispatchSubmitRecorder {
     ) {}
 
     /** 正常路径只执行一次 INSERT；同一条短信重投时才回查已有记录。 */
-    public async submit(message: constants.SmsChannelMessagePayload): Promise<constants.SimbankMessageResult> {
-        const { sender, downUsd } = this.submitCache.select(message)
-        const record = this.createRecord(message, sender, downUsd)
+    public async submit(payload: ChannelQueuePayload): Promise<constants.SimbankMessageResult> {
+        const { sender, downUsd } = this.submitCache.select(payload)
+        const record = this.createRecord(payload.message, sender, downUsd)
         const result = await this.dataSource
             .createQueryBuilder()
             .insert()
@@ -29,11 +30,11 @@ export class DispatchSubmitRecorder {
         if (insertedKeyId) {
             return { keyId: insertedKeyId, portKeyId: sender.portKeyId, simbankKeyId: sender.simbankKeyId }
         }
-        return await this.findExistingRecord(message.msgId)
+        return await this.findExistingRecord(payload.message.msgId)
     }
 
     private createRecord(
-        message: constants.SmsChannelMessagePayload,
+        message: MessageSubmitPayload,
         sender: constants.SimbankSender,
         downUsd: number
     ): Partial<SrmSchema.TbSrmSimbankMessage> {

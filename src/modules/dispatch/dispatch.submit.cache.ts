@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common'
 import { DataSource, EntityManager, In, InjectDataSource } from '@wlisfes/chat-web-base-schema/database'
 import { SubmitBalancer, selectQuote, submitQuoteKey } from '@/modules/dispatch/dispatch.submit'
-import { RabbitmqService } from '@wlisfes/chat-web-base-schema/rabbitmq'
+import { RabbitmqService, ChannelQueuePayload, RouteConfigPayload } from '@wlisfes/chat-web-base-schema/rabbitmq'
 import * as SrmSchema from '@wlisfes/chat-web-base-schema/chat-web-srm-mysql'
 import * as constants from '@/modules/dispatch/dispatch.constants'
 
@@ -67,7 +67,7 @@ export class DispatchSubmitCacheService implements OnApplicationBootstrap, OnApp
     public async onApplicationBootstrap(): Promise<void> {
         await this.refresh('启动')
         this.markLoaded()
-        await this.rabbitmqService.consume<constants.SubmitConfigChangedPayload>(constants.DISPATCH_SUBMIT_CONFIG_QUEUE, async payload =>
+        await this.rabbitmqService.consume<RouteConfigPayload>(constants.DISPATCH_SUBMIT_CONFIG_QUEUE, async payload =>
             this.fetchSubmitConfigChanged(payload)
         )
         this.timer = setInterval(() => void this.reconcile(), constants.DISPATCH_SUBMIT_RECONCILE_INTERVAL_MS)
@@ -82,10 +82,11 @@ export class DispatchSubmitCacheService implements OnApplicationBootstrap, OnApp
         return this.loaded
     }
 
-    public select(message: constants.SmsChannelMessagePayload, now = Date.now()): SelectedSubmitSender {
+    public select(payload: ChannelQueuePayload, now = Date.now()): SelectedSubmitSender {
+        const { message, route } = payload
         const snapshot = this.current()
-        const sender = this.balancer.pick(message.channelKeyId, snapshot.senders.get(message.channelKeyId) ?? [])
-        if (!sender) throw new Error(`通道没有可用 SIM 端口：channelKeyId=${message.channelKeyId}`)
+        const sender = this.balancer.pick(route.channelKeyId, snapshot.senders.get(route.channelKeyId) ?? [])
+        if (!sender) throw new Error(`通道没有可用 SIM 端口：channelKeyId=${route.channelKeyId}`)
         const quoteKey = submitQuoteKey(sender.userKeyId, sender.simbankKeyId, Number(message.countryKeyId))
         return { sender, downUsd: selectQuote(snapshot.quotes.get(quoteKey), now) }
     }
@@ -95,7 +96,7 @@ export class DispatchSubmitCacheService implements OnApplicationBootstrap, OnApp
         return this.snapshot
     }
 
-    private async fetchSubmitConfigChanged(payload: constants.SubmitConfigChangedPayload): Promise<'ack'> {
+    private async fetchSubmitConfigChanged(payload: RouteConfigPayload): Promise<'ack'> {
         await this.refresh(`配置变更 version=${payload?.version}`).catch(error =>
             this.logger.error(`提交缓存重新加载失败，继续使用旧快照：${this.errorMessage(error)}`)
         )
