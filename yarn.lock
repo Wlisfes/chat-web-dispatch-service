@@ -399,6 +399,14 @@
   resolved "https://registry.npmmirror.com/@nestjs/mapped-types/-/mapped-types-2.1.1.tgz#9530ac3250ab433ba6ef831e9dd5d483f5fc8144"
   integrity sha512-SCCoMEJ6jdeI5h/N+KCVF1+pmg/hmEkNA5nHTS8Gvww7T/LCl4o1gFLinw2iQ60w7slFkszHcGLKGdazVI4F8A==
 
+"@nestjs/microservices@11.2.3":
+  version "11.2.3"
+  resolved "https://registry.npmmirror.com/@nestjs/microservices/-/microservices-11.2.3.tgz#4e74921029f35c0194498ccca67323a2b67a0259"
+  integrity sha512-HcMm6c8dwKbU0CSOFYxcHZ17YkQawnVzpfT58u24/fAzmsA1WJyfCej5+uONjuG7L/CG76OSxKZlZBNzcxkUiw==
+  dependencies:
+    iterare "1.2.1"
+    tslib "2.8.1"
+
 "@nestjs/platform-express@11.2.3":
   version "11.2.3"
   resolved "https://registry.npmmirror.com/@nestjs/platform-express/-/platform-express-11.2.3.tgz#e9b37a380aae0fc157bfc83f0aa738a963c6ff48"
@@ -764,10 +772,10 @@
     "@webassemblyjs/ast" "1.14.1"
     "@xtuc/long" "4.2.2"
 
-"@wlisfes/chat-web-base-schema@1.7.15":
-  version "1.7.15"
-  resolved "https://npm.pkg.github.com/download/@wlisfes/chat-web-base-schema/1.7.15/b606bddaf18eb608a9c509705cf30dd5de43d311#b606bddaf18eb608a9c509705cf30dd5de43d311"
-  integrity sha512-bVhU1j3oOc/SthSlJ4OlDDN3sqVEFd8TGoHdMucCfrxKCAa1/jwd/ig/dfaA+ORAJhmvvGUu8ibeGAKhMw8NZw==
+"@wlisfes/chat-web-base-schema@1.7.16":
+  version "1.7.16"
+  resolved "https://npm.pkg.github.com/download/@wlisfes/chat-web-base-schema/1.7.16/c5873abb5cb3146426b53c51c5630a517ccfa3dc#c5873abb5cb3146426b53c51c5630a517ccfa3dc"
+  integrity sha512-H+t+Wckh22kEJ1dUj3ZA+C5mbZO0yaM+3JqO7AmjZqjNz5bGXsQw6Nm0SHpUSDnHY0+NoSJdebytCGzRih1OAw==
   dependencies:
     "@opentelemetry/api" "^1.9.0"
     "@types/lodash" "^4.17.25"
