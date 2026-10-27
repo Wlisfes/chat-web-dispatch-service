@@ -12,6 +12,7 @@ import { DatabaseModule } from '@/database/database.module'
 import { HealthModule } from '@/health/health.module'
 import { SMS_RABBITMQ_VHOST } from '@/modules/dispatch/dispatch.constants'
 import { DispatchModule } from '@/modules/dispatch/dispatch.module'
+import { ObserveModule } from '@/modules/observe/observe.module'
 import { setupDispatchTopology } from '@/modules/dispatch/dispatch.topology'
 
 @Module({
@@ -25,7 +26,8 @@ import { setupDispatchTopology } from '@/modules/dispatch/dispatch.topology'
         GatewayPrincipalModule,
         AuthorizationModule,
         HealthModule,
-        DispatchModule
+        DispatchModule,
+        ObserveModule
     ],
     controllers: [AppController],
     providers: [
