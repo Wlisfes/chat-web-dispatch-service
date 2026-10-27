@@ -55,7 +55,7 @@ function sender(overrides = {}) {
     }
 }
 
-function fakeDataSource({ duplicate = false, existing = { keyId: 12, portKeyId: 22, simbankKeyId: 32 } } = {}) {
+function fakeDataSource({ duplicate = false, existing = { keyId: 12, portKeyId: 22, simbankKeyId: 32, sendStatus: 'success' } } = {}) {
     let inserted
     let lookups = 0
     return {
@@ -96,7 +96,7 @@ test('发送记录正常路径只插入一次，并写入缓存中的端口和�
     const cache = { select: () => ({ sender: sender(), downUsd: 54100 }) }
     const result = await new DispatchSubmitRecorder(fake.dataSource, cache).submit(message())
     const row = fake.inserted()
-    assert.deepEqual(result, { keyId: 99, portKeyId: 2001, simbankKeyId: 3001 })
+    assert.deepEqual(result, { keyId: 99, portKeyId: 2001, simbankKeyId: 3001, sendStatus: 'submitted' })
     assert.equal(fake.lookups(), 0)
     assert.equal(row.msgId, 'c2f45ce1-30a5-4d14-b0d7-cb76b10f0e21')
     assert.equal(row.source, 'down')
@@ -110,7 +110,7 @@ test('同一个 msgId 重投时插入被忽略，再回查已有记录', async (
     const fake = fakeDataSource({ duplicate: true })
     const cache = { select: () => ({ sender: sender(), downUsd: 54100 }) }
     const result = await new DispatchSubmitRecorder(fake.dataSource, cache).submit(message())
-    assert.deepEqual(result, { keyId: 12, portKeyId: 22, simbankKeyId: 32 })
+    assert.deepEqual(result, { keyId: 12, portKeyId: 22, simbankKeyId: 32, sendStatus: 'success' })
     assert.equal(fake.lookups(), 1)
 })
 

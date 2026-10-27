@@ -1,3 +1,4 @@
+import type * as SrmSchema from '@wlisfes/chat-web-base-schema/chat-web-srm-mysql'
 import { randomUUID } from 'node:crypto'
 
 /** RabbitMQ 虚拟主机；SMS、SRM、Dispatch 的 Nacos `rabbitmq.vhost` 必须都是这个值。 */
@@ -65,4 +66,19 @@ export interface SimbankMessageResult {
     keyId: number
     portKeyId: number
     simbankKeyId: number
+    /** 当前发送状态：新写入为 submitted；重投时为已有记录的状态。 */
+    sendStatus: SrmSchema.TbSrmSimbankMessageSendStatus
+}
+
+/** Observe 不可用（连接失败、超时）时写入发送记录的状态码。 */
+export const OBSERVE_UNAVAILABLE_CODE = 'OBSERVE_UNAVAILABLE'
+/** 发送记录状态说明字段长度上限：tb_srm_simbank_message.status_message varchar(512)。 */
+export const STATUS_MESSAGE_MAX_LENGTH = 512
+
+/** 写回发送记录的发送结果。 */
+export interface SimbankMessageOutcome {
+    sendStatus: SrmSchema.TbSrmSimbankMessageSendStatus
+    statusCode: string
+    statusMessage: string
+    sendTime: Date
 }

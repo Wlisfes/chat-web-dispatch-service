@@ -28,9 +28,34 @@ export class DispatchSubmitRecorder {
 
         const insertedKeyId = this.insertedKeyId(result)
         if (insertedKeyId) {
-            return { keyId: insertedKeyId, portKeyId: sender.portKeyId, simbankKeyId: sender.simbankKeyId }
+            return {
+                keyId: insertedKeyId,
+                portKeyId: sender.portKeyId,
+                simbankKeyId: sender.simbankKeyId,
+                sendStatus: SrmSchema.TbSrmSimbankMessageSendStatus.SUBMITTED
+            }
         }
         return await this.findExistingRecord(payload.message.msgId)
+    }
+
+    /**
+     * 写回发送结果。只更新仍处于 submitted 的记录，避免重投或乱序时覆盖已送达等后续状态。
+     * 返回 false 表示记录状态已被其他流程推进，本次结果未写入。
+     */
+    public async complete(keyId: number, outcome: constants.SimbankMessageOutcome): Promise<boolean> {
+        const result = await this.dataSource
+            .createQueryBuilder()
+            .update(SrmSchema.TbSrmSimbankMessage)
+            .set({
+                sendStatus: outcome.sendStatus,
+                statusCode: outcome.statusCode.slice(0, 32),
+                statusMessage: outcome.statusMessage.slice(0, constants.STATUS_MESSAGE_MAX_LENGTH),
+                sendTime: outcome.sendTime
+            })
+            .where('keyId = :keyId AND sendStatus = :submitted', { keyId, submitted: SrmSchema.TbSrmSimbankMessageSendStatus.SUBMITTED })
+            .updateEntity(false)
+            .execute()
+        return Boolean(result.affected)
     }
 
     private createRecord(
@@ -84,7 +109,7 @@ export class DispatchSubmitRecorder {
     private async findExistingRecord(msgId: string): Promise<constants.SimbankMessageResult> {
         const record = await this.dataSource.getRepository(SrmSchema.TbSrmSimbankMessage).findOne({
             where: { msgId },
-            select: { keyId: true, portKeyId: true, simbankKeyId: true }
+            select: { keyId: true, portKeyId: true, simbankKeyId: true, sendStatus: true }
         })
         if (!record) {
             throw new Error(`发送记录写入后未找到：msgId=${msgId}`)
