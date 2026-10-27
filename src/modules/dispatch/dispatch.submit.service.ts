@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import type { MessageSubmitPayload, ChannelQueuePayload } from '@wlisfes/chat-web-base-schema/rabbitmq'
+import { type MessageSubmitPayload, type ChannelQueuePayload } from '@wlisfes/chat-web-base-schema/rabbitmq'
 import { DataSource, InjectDataSource } from '@wlisfes/chat-web-base-schema/database'
 import { DispatchSubmitCacheService } from '@/modules/dispatch/dispatch.submit.cache'
 import * as SrmSchema from '@wlisfes/chat-web-base-schema/chat-web-srm-mysql'
@@ -16,7 +16,8 @@ export class DispatchSubmitRecorder {
     /** 正常路径只执行一次 INSERT；同一条短信重投时才回查已有记录。 */
     public async submit(payload: ChannelQueuePayload): Promise<constants.SimbankMessageResult> {
         const { sender, downUsd } = this.submitCache.select(payload)
-        const record = this.createRecord(payload.message, sender, downUsd)
+        console.log(payload)
+        const record = this.createRecord(payload, sender, downUsd)
         const result = await this.dataSource
             .createQueryBuilder()
             .insert()
@@ -34,7 +35,7 @@ export class DispatchSubmitRecorder {
     }
 
     private createRecord(
-        message: MessageSubmitPayload,
+        { message, route }: ChannelQueuePayload,
         sender: constants.SimbankSender,
         downUsd: number
     ): Partial<SrmSchema.TbSrmSimbankMessage> {
@@ -53,6 +54,8 @@ export class DispatchSubmitRecorder {
             mcc: message.mcc,
             sendStatus: SrmSchema.TbSrmSimbankMessageSendStatus.SUBMITTED,
             sendTime: new Date(),
+            routeKeyId: route.routeKeyId,
+            routeAlias: route.routeAlias,
             channelKeyId: sender.channelKeyId,
             channelAlias: sender.channelAlias,
             channelOwnerUserUid: sender.channelOwnerUserUid,
