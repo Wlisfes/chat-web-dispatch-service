@@ -51,7 +51,7 @@ export interface SimbankSender {
     userName: string
     userAlias: string | null
     ownerUserUid: string
-    /** 供应商付款模式快照：决定计费时机，预付提交即计、后付发送成功才计。 */
+    /** 供应商付款模式快照：写入发送记录，Hooks 写回结果时按它计费。 */
     payMode: SrmSchema.TbSrmUserPayMode
     weight: number
 }
@@ -70,8 +70,6 @@ export interface SimbankMessageResult {
     simbankKeyId: number
     /** 当前发送状态：新写入为 submitted；重投时为已有记录的状态。 */
     sendStatus: SrmSchema.TbSrmSimbankMessageSendStatus
-    /** true 表示同一短信ID的记录已存在（MQ 重投），发送前需要先查询设备侧发送状态。 */
-    redelivered?: boolean
 }
 
 /** Observe 不可用（连接失败、超时）时写入发送记录的状态码。 */
@@ -80,35 +78,20 @@ export const OBSERVE_UNAVAILABLE_CODE = 'OBSERVE_UNAVAILABLE'
 export const PORT_BUSY_CODE = 'PORT_BUSY'
 /** 换端口时通道已没有可用端口的状态码。 */
 export const NO_AVAILABLE_PORT_CODE = 'NO_AVAILABLE_PORT'
-/** 回执超时且设备没有这条短信的记录时写入发送记录的状态码。 */
-export const RECEIPT_TIMEOUT_CODE = 'RECEIPT_TIMEOUT'
+/** 预付余额小于等于 0，不允许发送。 */
+export const INSUFFICIENT_BALANCE_CODE = 'INSUFFICIENT_BALANCE'
 
 /** 端口发送队列已满且没有其他空闲端口时，等待多久再重新选端口。等待期间不确认 MQ 消息，形成背压。 */
 export const DISPATCH_PORT_BUSY_RETRY_MS = 1_000
 /** 端口忙的最长等待时间，超过后记为提交失败。 */
 export const DISPATCH_PORT_BUSY_MAX_WAIT_MS = 60_000
-/** 设备回执超时：提交超过这个时间仍为 submitted 的记录，按短信ID查询设备侧状态补偿。需大于端口队列上限 × 发送间隔。 */
-export const DISPATCH_RECEIPT_TIMEOUT_MS = 10 * 60 * 1000
-/** 回执超时检查间隔。 */
-export const DISPATCH_RECEIPT_CHECK_INTERVAL_MS = 30_000
-/** 单次回执超时检查的记录数上限。 */
-export const DISPATCH_RECEIPT_CHECK_BATCH = 200
 /** 发送记录状态说明字段长度上限：tb_srm_simbank_message.status_message varchar(512)。 */
 export const STATUS_MESSAGE_MAX_LENGTH = 512
 
-/** 写回发送记录的发送结果。 */
+/** 提交失败时写回发送记录的结果。 */
 export interface SimbankMessageOutcome {
     sendStatus: SrmSchema.TbSrmSimbankMessageSendStatus
     statusCode: string
     statusMessage: string
     sendTime: Date
-    /** true 表示设备受理过这条短信（进入过端口发送队列），预付供应商需要计费。 */
-    accepted?: boolean
 }
-
-/** 计费事件发件箱补发间隔：发布失败或进程重启遗留的待发布事件按这个间隔补发。 */
-export const DISPATCH_BILLING_OUTBOX_INTERVAL_MS = 10_000
-/** 单次补发的事件数量上限。 */
-export const DISPATCH_BILLING_OUTBOX_BATCH = 200
-/** 发件箱发布失败原因长度上限：tb_srm_billing_outbox.last_error varchar(512)。 */
-export const BILLING_OUTBOX_ERROR_MAX_LENGTH = 512

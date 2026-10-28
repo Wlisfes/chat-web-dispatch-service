@@ -232,11 +232,7 @@ export class DispatchService implements OnApplicationBootstrap, OnApplicationShu
         if (outcome.skipped) {
             this.logger.log(`短信已有发送结果，跳过重复发送：${summary}，sendStatus=${outcome.sendStatus}，${elapsed}`)
         } else if (outcome.pending) {
-            this.logger.log(
-                `${outcome.recovered ? '重投短信设备已受理，不重复提交' : '短信已提交设备'}，等待回执：${summary}，statusCode=${outcome.statusCode}，${elapsed}`
-            )
-        } else if (outcome.recovered) {
-            this.logger.log(`重投短信设备已发送过，使用设备结果不重复发送：${summary}，sendStatus=${outcome.sendStatus}，${elapsed}`)
+            this.logger.log(`短信已提交设备，等待回执：${summary}，statusCode=${outcome.statusCode}，${elapsed}`)
         } else {
             this.logger.warn(
                 `短信提交失败：${summary}，sendStatus=${outcome.sendStatus}，statusCode=${outcome.statusCode}，原因=${outcome.statusMessage}，${elapsed}`

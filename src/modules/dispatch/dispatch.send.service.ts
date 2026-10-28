@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { type ChannelQueuePayload } from '@wlisfes/chat-web-base-schema/rabbitmq'
-import { OBSERVE_SUBMIT_CODE, type ObserveQueryResult, type ObserveSubmitResult } from '@wlisfes/chat-web-base-schema/observe'
+import { OBSERVE_SUBMIT_CODE } from '@wlisfes/chat-web-base-schema/observe'
 import { ObserveClientService } from '@/modules/observe/observe.client'
+import { ChargeClientService } from '@/modules/charge/charge.client'
 import { DispatchSubmitCacheService } from '@/modules/dispatch/dispatch.submit.cache'
 import { DispatchSubmitRecorder } from '@/modules/dispatch/dispatch.submit.service'
 import * as SrmSchema from '@wlisfes/chat-web-base-schema/chat-web-srm-mysql'
@@ -26,24 +27,8 @@ export interface DispatchSendOutcome {
     statusMessage?: string
     /** false 表示结果未写入：记录状态已被其他流程推进。 */
     saved?: boolean
-    /** true 表示重投时设备已收到过这条短信，本次没有重新提交。 */
-    recovered?: boolean
     /** 最终提交的端口；端口忙换端口后与发送记录写入时不同。 */
     portKeyId?: number
-}
-
-/** Observe 设备结果转为发送记录结果。 */
-export function toSimbankOutcome(result: ObserveSubmitResult, accepted: boolean): constants.SimbankMessageOutcome {
-    return {
-        sendStatus:
-            result.sendStatus === 'success'
-                ? SrmSchema.TbSrmSimbankMessageSendStatus.SUCCESS
-                : SrmSchema.TbSrmSimbankMessageSendStatus.FAILED,
-        statusCode: String(result.statusCode ?? 'UNKNOWN'),
-        statusMessage: String(result.statusMessage ?? ''),
-        sendTime: parseTime(result.sendTime),
-        accepted
-    }
 }
 
 export function parseTime(value: unknown): Date {
@@ -52,17 +37,16 @@ export function parseTime(value: unknown): Date {
 }
 
 /**
- * 发送记录写入后异步提交给 Observe：Observe 受理（进入端口发送队列）后立即返回，Dispatch 确认 MQ 消息，
- * 发送结果由 Observe → Hooks → 回执队列送达，DispatchReceiptService 写回；回执丢失由 DispatchReceiptChecker 超时查询补偿。
+ * 发送记录写入后异步提交给 Observe：Observe 受理（进入端口发送队列）后立即返回，Dispatch 确认 MQ 消息。
+ * 发送结果由 Observe → Hooks 写回发送记录，Dispatch 不处理设备回执。
  *
  * - 端口发送队列已满（PORT_BUSY）：换通道内其他端口提交；全部忙时等待后重试，超过最长等待记为提交失败；
  * - 发送条件不满足：设备拒绝，写回 failed；
  * - Observe 不可用：记为提交失败（rejected），不重新入队，避免同一条短信反复占用端口；
- * - 重投且记录仍为 submitted：先按短信ID查询设备侧状态，设备收到过就不再提交；查询失败时不提交，宁可少发也不重复发。
+ * - 重投时记录已有最终结果则跳过；仍为 submitted 时重新提交，Observe 按短信ID去重，不会重复发送。
  */
 @Injectable()
 export class DispatchSendService {
-    private readonly logger = new Logger(DispatchSendService.name)
     /** 端口忙时的等待间隔和最长等待；测试时可替换。 */
     public busyRetryMs = constants.DISPATCH_PORT_BUSY_RETRY_MS
     public busyMaxWaitMs = constants.DISPATCH_PORT_BUSY_MAX_WAIT_MS
@@ -70,47 +54,13 @@ export class DispatchSendService {
     constructor(
         private readonly observeClient: ObserveClientService,
         private readonly submitRecorder: DispatchSubmitRecorder,
-        private readonly submitCache: DispatchSubmitCacheService
+        private readonly submitCache: DispatchSubmitCacheService,
+        private readonly chargeClient?: ChargeClientService
     ) {}
 
     public async send(payload: ChannelQueuePayload, record: constants.SimbankMessageResult): Promise<DispatchSendOutcome> {
-        const msgId = payload.message.msgId
         if (SETTLED_STATUSES.has(record.sendStatus)) return { skipped: true, sendStatus: record.sendStatus }
-        if (record.redelivered) {
-            const recovered = await this.recover(msgId, record)
-            if (recovered) return recovered
-        }
         return await this.enqueue(payload, record)
-    }
-
-    /**
-     * 重投时查询设备侧状态。设备没有收到过返回 undefined，由调用方重新提交；
-     * 排队或发送中保持 submitted 等待回执；已有结果直接写回；查询失败记为提交失败，不重新提交。
-     */
-    private async recover(msgId: string, record: constants.SimbankMessageResult): Promise<DispatchSendOutcome | undefined> {
-        let queried: ObserveQueryResult
-        try {
-            queried = await this.observeClient.query({ msgId })
-        } catch (error) {
-            return await this.finish(record, {
-                sendStatus: SrmSchema.TbSrmSimbankMessageSendStatus.REJECTED,
-                statusCode: constants.OBSERVE_UNAVAILABLE_CODE,
-                statusMessage: `Observe 发送状态查询失败，未重新发送：${errorMessage(error)}`,
-                sendTime: new Date()
-            })
-        }
-        if (!queried?.found) return undefined
-        if (queried.result)
-            return { ...(await this.finish(record, toSimbankOutcome(queried.result, queried.accepted === true))), recovered: true }
-        await this.acceptBilling(record.keyId)
-        return {
-            skipped: false,
-            pending: true,
-            recovered: true,
-            sendStatus: SrmSchema.TbSrmSimbankMessageSendStatus.SUBMITTED,
-            statusCode: OBSERVE_SUBMIT_CODE.QUEUED,
-            portKeyId: record.portKeyId
-        }
     }
 
     /** 提交到端口发送队列；端口忙时换端口，全部忙时等待重试。 */
@@ -120,6 +70,19 @@ export class DispatchSendService {
         const busy = new Set<number>()
         let current = { portKeyId: record.portKeyId, simbankKeyId: record.simbankKeyId }
         for (;;) {
+            const sender = this.submitCache.senderOf?.(route.channelKeyId, current.portKeyId)
+            if (sender && this.chargeClient) {
+                const decision = await this.chargeClient.canSend(sender.userKeyId, sender.payMode)
+                if (!decision.allowed) {
+                    return await this.finish(record, {
+                        sendStatus: SrmSchema.TbSrmSimbankMessageSendStatus.REJECTED,
+                        statusCode: constants.INSUFFICIENT_BALANCE_CODE,
+                        statusMessage: decision.reason || '预付余额不足',
+                        sendTime: new Date()
+                    })
+                }
+            }
+
             let admission
             try {
                 admission = await this.observeClient.enqueue({
@@ -138,7 +101,6 @@ export class DispatchSendService {
                 })
             }
             if (admission.accepted) {
-                await this.acceptBilling(record.keyId)
                 return {
                     skipped: false,
                     pending: true,
@@ -186,16 +148,6 @@ export class DispatchSendService {
                 current = { portKeyId: selected.sender.portKeyId, simbankKeyId: selected.sender.simbankKeyId }
             }
         }
-    }
-
-    /**
-     * 设备已受理：写入预付计费事件。写入失败不影响确认 MQ 消息（设备已在发送），
-     * 回执或超时检查写回结果时会在同一事务中再次幂等写入。
-     */
-    private async acceptBilling(keyId: number): Promise<void> {
-        await this.submitRecorder
-            .accept(keyId)
-            .catch(error => this.logger.warn(`预付计费事件写入失败，写回结果时补写：msgKeyId=${keyId}，原因=${errorMessage(error)}`))
     }
 
     private async finish(record: constants.SimbankMessageResult, outcome: constants.SimbankMessageOutcome): Promise<DispatchSendOutcome> {

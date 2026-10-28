@@ -11,6 +11,5 @@ export const DISPATCH_MYSQL_ENTITIES = [
     SrmSchema.TbSrmSimbankPort,
     SrmSchema.TbSrmSimbank,
     SrmSchema.TbSrmUser,
-    SrmSchema.TbSrmSimbankQuote,
-    SrmSchema.TbSrmBillingOutbox
+    SrmSchema.TbSrmSimbankQuote
 ] as const

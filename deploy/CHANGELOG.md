@@ -1,11 +1,18 @@
 # Dispatch 部署变更记录
 
+## 2026-10-28：移除回执写回和供应商计费
+
+- 影响机器：`chat-home-server`。
+- 变更内容：Dispatch 只负责提交阶段（写入发送记录、端口忙换端口、提交失败写回）。移除回执超时补偿、重投时查询 Observe、供应商计费发件箱；设备回执写回和计费由 Hooks 处理。
+- 机器侧操作：部署脚本不再授予 `tb_srm_billing_outbox` 权限（已有授权保留，不影响运行）。
+- 回滚方法：回退 Dispatch 镜像。
+
 ## 2026-10-28：异步提交 Observe、设备回执写回、供应商计费
 
 - 影响机器：`chat-home-server`。
 - 变更内容：
   - 提交 Observe 改为异步 `observe.sms.enqueue`：设备受理（进入端口发送队列）后立即确认 MQ 消息，并传通道 `sendInterval` 由 Observe 按端口限速；端口队列已满时换通道内其他端口，全部忙时等待重试，最长 60 秒后记为 `PORT_BUSY`。
-  - 消费 `chat.sms.receipt.observe` 回执队列写回发送记录（只更新 submitted）；每 30 秒检查提交超过 10 分钟仍为 submitted 的记录，按短信ID查询 Observe 补偿，设备没有记录时记为 `RECEIPT_TIMEOUT` 失败，不重新发送。
+  - 消费 `chat.sms.simbank.webhook` 回执队列写回发送记录（只更新 submitted）；每 30 秒检查提交超过 10 分钟仍为 submitted 的记录，按短信ID查询 Observe 补偿，设备没有记录时记为 `RECEIPT_TIMEOUT` 失败，不重新发送。
   - 供应商计费：预付在设备受理时计费，后付在写回 success 时计费；计费事件经 `tb_srm_billing_outbox` 发件箱发布到 Finance。
 - 机器侧操作：部署脚本给 `chat_web_dispatch_service` 增加 `tb_srm_billing_outbox` 的 `SELECT`、`INSERT`、`UPDATE`；RabbitMQ 账号需在 `/chat-sms` 有声明回执、计费交换机和队列的权限。
 - 前置条件：先发布 base-schema，再部署 Observe、Hooks、Finance，最后部署 Dispatch。
