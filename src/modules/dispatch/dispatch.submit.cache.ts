@@ -10,6 +10,8 @@ interface SubmitSnapshot {
     senders: Map<number, constants.SimbankSender[]>
     /** 供应商 + 设备 + 国家/地区 -> 已发布且未作废的报价段，按生效时间倒序。 */
     quotes: Map<string, constants.SimbankQuoteCandidate[]>
+    /** 通道主键 -> 端口发送间隔毫秒数：同一端口两条短信之间的最小间隔，由 Observe 按端口排队执行。 */
+    sendIntervals: Map<number, number>
 }
 
 export interface SelectedSubmitSender {
@@ -83,12 +85,25 @@ export class DispatchSubmitCacheService implements OnApplicationBootstrap, OnApp
     }
 
     public select(payload: ChannelQueuePayload, now = Date.now()): SelectedSubmitSender {
+        const selected = this.selectExcept(payload, new Set(), now)
+        if (!selected) throw new Error(`通道没有可用 SIM 端口：channelKeyId=${payload.route.channelKeyId}`)
+        return selected
+    }
+
+    /** 跳过指定端口选择发送端口：端口发送队列已满时换端口提交。没有其他可用端口时返回 undefined。 */
+    public selectExcept(payload: ChannelQueuePayload, excluded: ReadonlySet<number>, now = Date.now()): SelectedSubmitSender | undefined {
         const { message, route } = payload
         const snapshot = this.current()
-        const sender = this.balancer.pick(route.channelKeyId, snapshot.senders.get(route.channelKeyId) ?? [])
-        if (!sender) throw new Error(`通道没有可用 SIM 端口：channelKeyId=${route.channelKeyId}`)
+        const candidates = (snapshot.senders.get(route.channelKeyId) ?? []).filter(sender => !excluded.has(sender.portKeyId))
+        const sender = this.balancer.pick(route.channelKeyId, candidates)
+        if (!sender) return undefined
         const quoteKey = submitQuoteKey(sender.userKeyId, sender.simbankKeyId, Number(message.countryKeyId))
         return { sender, downUsd: selectQuote(snapshot.quotes.get(quoteKey), now) }
+    }
+
+    /** 通道的端口发送间隔毫秒数；通道不在缓存中时为 0（不限速）。 */
+    public sendInterval(channelKeyId: number): number {
+        return this.snapshot?.sendIntervals.get(channelKeyId) ?? 0
     }
 
     private current(): SubmitSnapshot {
@@ -138,7 +153,7 @@ export class DispatchSubmitCacheService implements OnApplicationBootstrap, OnApp
         const [channels, links, quotes] = await Promise.all([
             manager.find(SrmSchema.TbSrmChannel, {
                 where: { status: SrmSchema.TbSrmChannelStatus.ENABLE },
-                select: { keyId: true, alias: true, ownerUserUid: true }
+                select: { keyId: true, alias: true, ownerUserUid: true, sendInterval: true }
             }),
             manager.find(SrmSchema.TbSrmChannelPort, {
                 where: { status: SrmSchema.TbSrmChannelPortStatus.ENABLE },
@@ -152,7 +167,8 @@ export class DispatchSubmitCacheService implements OnApplicationBootstrap, OnApp
         const users = await this.loadUsers(manager, [...new Set(simbanks.map(simbank => simbank.userKeyId))])
         const senders = this.createSenders(channels, links, ports, simbanks, users)
 
-        this.snapshot = { senders: groupBy(senders, sender => sender.channelKeyId), quotes }
+        const sendIntervals = new Map(channels.map(channel => [channel.keyId, Math.max(0, Number(channel.sendInterval) || 0)]))
+        this.snapshot = { senders: groupBy(senders, sender => sender.channelKeyId), quotes, sendIntervals }
         this.signature = signature
         this.balancer.clear()
         this.logger.log(
@@ -186,7 +202,7 @@ export class DispatchSubmitCacheService implements OnApplicationBootstrap, OnApp
         if (keyIds.length === 0) return []
         return manager.find(SrmSchema.TbSrmUser, {
             where: { keyId: In(keyIds), status: SrmSchema.TbSrmUserStatus.ENABLE },
-            select: { keyId: true, name: true, alias: true }
+            select: { keyId: true, name: true, alias: true, payMode: true }
         })
     }
 
@@ -255,6 +271,7 @@ export class DispatchSubmitCacheService implements OnApplicationBootstrap, OnApp
                     userKeyId: user.keyId,
                     userName: user.name,
                     userAlias: user.alias,
+                    payMode: user.payMode,
                     ownerUserUid: simbank.ownerUserUid,
                     weight: link.weight
                 }
