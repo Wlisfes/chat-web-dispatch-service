@@ -1,5 +1,5 @@
 import type { ConfirmChannel } from 'amqplib'
-import { setupObserveReceiptTopology, setupSrmUserBillingTopology } from '@wlisfes/chat-web-base-schema/rabbitmq'
+import { setupSimbankWebhookTopology, setupSrmUserBillingTopology } from '@wlisfes/chat-web-base-schema/rabbitmq'
 import * as constants from '@/modules/dispatch/dispatch.constants'
 
 /**
@@ -23,5 +23,5 @@ export async function setupDispatchTopology(channel: ConfirmChannel): Promise<vo
     // 供应商计费事件由 Dispatch 发布、Finance 消费；发布方也声明，Finance 未启动时事件不会丢。
     await setupSrmUserBillingTopology(channel)
     // 设备回执由 Hooks 发布、Dispatch 消费；消费方也声明，Hooks 先启动或后启动都不影响。
-    await setupObserveReceiptTopology(channel)
+    await setupSimbankWebhookTopology(channel)
 }

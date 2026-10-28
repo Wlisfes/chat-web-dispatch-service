@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common'
 import { DataSource, InjectDataSource, LessThan } from '@wlisfes/chat-web-base-schema/database'
-import { type ObserveReceiptPayload } from '@wlisfes/chat-web-base-schema/observe'
-import { RabbitmqService, SMS_OBSERVE_RECEIPT_QUEUE } from '@wlisfes/chat-web-base-schema/rabbitmq'
+import { type SimbankWebhookPayload } from '@wlisfes/chat-web-base-schema/observe'
+import { RabbitmqService, SMS_SIMBANK_WEBHOOK_QUEUE } from '@wlisfes/chat-web-base-schema/rabbitmq'
 import { ObserveClientService } from '@/modules/observe/observe.client'
 import { DispatchSubmitRecorder } from '@/modules/dispatch/dispatch.submit.service'
 import { toSimbankOutcome } from '@/modules/dispatch/dispatch.send.service'
@@ -29,7 +29,7 @@ export class DispatchReceiptService implements OnApplicationBootstrap, OnApplica
     ) {}
 
     public async onApplicationBootstrap(): Promise<void> {
-        await this.rabbitmqService.consume<ObserveReceiptPayload>(SMS_OBSERVE_RECEIPT_QUEUE, async receipt => this.fetchReceipt(receipt))
+        await this.rabbitmqService.consume<SimbankWebhookPayload>(SMS_SIMBANK_WEBHOOK_QUEUE, async receipt => this.fetchReceipt(receipt))
         this.timer = setInterval(() => void this.check(), constants.DISPATCH_RECEIPT_CHECK_INTERVAL_MS)
         this.timer.unref()
     }
@@ -39,7 +39,7 @@ export class DispatchReceiptService implements OnApplicationBootstrap, OnApplica
     }
 
     /** 写回设备回执；写库失败时抛错，由 MQ 拒绝进入死信，超时检查会再次查询补偿。 */
-    public async fetchReceipt(receipt: ObserveReceiptPayload): Promise<'ack'> {
+    public async fetchReceipt(receipt: SimbankWebhookPayload): Promise<'ack'> {
         const keyId = Number(receipt?.msgKeyId)
         if (!receipt?.msgId || !Number.isInteger(keyId) || keyId <= 0) {
             this.logger.warn(`设备回执缺少 msgId 或 msgKeyId，已丢弃：${JSON.stringify(receipt)}`)
