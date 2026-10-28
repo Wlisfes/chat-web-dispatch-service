@@ -217,26 +217,34 @@ export class DispatchService implements OnApplicationBootstrap, OnApplicationShu
     }
 
     /**
-     * 发送短信：按 msgId 幂等写入发送记录，再调用 Observe 模拟设备发送并写回结果。
-     * 入库失败时抛错，由 MQ 拒绝并进入死信；发送失败只写入发送记录，不重新入队。
+     * 发送短信：按 msgId 幂等写入发送记录，再异步提交 Observe 端口发送队列，受理后确认 MQ 消息。
+     * 发送结果由设备回执写回。入库失败时抛错，由 MQ 拒绝并进入死信；提交失败只写入发送记录，不重新入队。
      */
     private async fetchSender(payload: ChannelQueuePayload): Promise<'ack'> {
         const { message, route } = payload
         const startedAt = performance.now()
         const record = await this.submitRecorder.submit(payload)
-        const outcome = await this.sendService.send(message.msgId, record)
-        const summary = `msgId=${message.msgId}，msgKeyId=${record.keyId}，channel=${route.channelAlias}，simbankKeyId=${record.simbankKeyId}，portKeyId=${record.portKeyId}，toNumber=${message.toNumber}`
+        const outcome = await this.sendService.send(payload, record)
+        const portKeyId = outcome.portKeyId ?? record.portKeyId
+        const moved = portKeyId !== record.portKeyId ? `（端口忙，已从 ${record.portKeyId} 换到 ${portKeyId}）` : ''
+        const summary = `msgId=${message.msgId}，msgKeyId=${record.keyId}，channel=${route.channelAlias}，portKeyId=${portKeyId}${moved}，toNumber=${message.toNumber}`
         const elapsed = `耗时=${Math.round(performance.now() - startedAt)}ms`
         if (outcome.skipped) {
             this.logger.log(`短信已有发送结果，跳过重复发送：${summary}，sendStatus=${outcome.sendStatus}，${elapsed}`)
-        } else if (outcome.sendStatus === 'success') {
-            this.logger.log(`短信发送成功：${summary}，statusCode=${outcome.statusCode}，${elapsed}`)
+        } else if (outcome.pending) {
+            this.logger.log(
+                `${outcome.recovered ? '重投短信设备已受理，不重复提交' : '短信已提交设备'}，等待回执：${summary}，statusCode=${outcome.statusCode}，${elapsed}`
+            )
+        } else if (outcome.recovered) {
+            this.logger.log(`重投短信设备已发送过，使用设备结果不重复发送：${summary}，sendStatus=${outcome.sendStatus}，${elapsed}`)
         } else {
             this.logger.warn(
-                `短信发送失败：${summary}，sendStatus=${outcome.sendStatus}，statusCode=${outcome.statusCode}，原因=${outcome.statusMessage}，${elapsed}`
+                `短信提交失败：${summary}，sendStatus=${outcome.sendStatus}，statusCode=${outcome.statusCode}，原因=${outcome.statusMessage}，${elapsed}`
             )
         }
-        if (outcome.saved === false) this.logger.warn(`发送结果未写入，记录状态已变更：msgId=${message.msgId}，msgKeyId=${record.keyId}`)
+        if (outcome.saved === false) {
+            this.logger.warn(`提交结果未写入，记录状态已变更：msgId=${message.msgId}，msgKeyId=${record.keyId}`)
+        }
         return 'ack'
     }
 }
