@@ -37,7 +37,6 @@ mysql_root -e "REVOKE ALL PRIVILEGES ON \`$LEGACY_DATABASE\`.* FROM '$USERNAME'@
 
 sql=$(cat <<SQL
 GRANT SELECT, INSERT, UPDATE ON \`chat-web-srm\`.\`tb_srm_simbank_message\` TO '$USERNAME'@'%';
-GRANT SELECT, INSERT, UPDATE ON \`chat-web-srm\`.\`tb_srm_billing_outbox\` TO '$USERNAME'@'%';
 GRANT SELECT ON \`chat-web-srm\`.\`tb_srm_channel\` TO '$USERNAME'@'%';
 GRANT SELECT ON \`chat-web-srm\`.\`tb_srm_channel_port\` TO '$USERNAME'@'%';
 GRANT SELECT ON \`chat-web-srm\`.\`tb_srm_simbank_port\` TO '$USERNAME'@'%';

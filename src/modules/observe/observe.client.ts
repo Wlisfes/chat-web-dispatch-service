@@ -1,12 +1,5 @@
 import { Injectable, Logger, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common'
-import {
-    ObserveEnqueueResult,
-    ObservePingPayload,
-    ObservePingResult,
-    ObserveQueryPayload,
-    ObserveQueryResult,
-    ObserveSubmitPayload
-} from '@wlisfes/chat-web-base-schema/observe'
+import { ObserveEnqueueResult, ObservePingPayload, ObservePingResult, ObserveSubmitPayload } from '@wlisfes/chat-web-base-schema/observe'
 import { resolveObserveClientConfig, type ObserveClientOptions } from '@/modules/observe/observe.constants'
 import { ClientProxy, ClientProxyFactory, Transport } from '@nestjs/microservices'
 import { OBSERVE_PATTERN } from '@wlisfes/chat-web-base-schema/observe'
@@ -47,11 +40,6 @@ export class ObserveClientService implements OnApplicationBootstrap, OnApplicati
     /** 异步提交：进入端口发送队列后立即返回受理结果；连接失败或超时抛错，由调用方决定如何记录。 */
     public async enqueue(payload: ObserveSubmitPayload): Promise<ObserveEnqueueResult> {
         return await this.send<ObserveEnqueueResult>(OBSERVE_PATTERN.ENQUEUE, payload)
-    }
-
-    /** 按短信ID查询设备侧发送状态；连接失败或超时抛错，由调用方决定如何处理。 */
-    public async query(payload: ObserveQueryPayload): Promise<ObserveQueryResult> {
-        return await this.send<ObserveQueryResult>(OBSERVE_PATTERN.QUERY, payload)
     }
 
     private async send<T>(pattern: string, payload: unknown): Promise<T> {
