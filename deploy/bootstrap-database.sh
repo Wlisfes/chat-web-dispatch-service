@@ -10,7 +10,8 @@ LEGACY_DATABASE=${DISPATCH_LEGACY_MYSQL_DATABASE:-chat-web-dispatch}
 docker inspect "$MYSQL_CONTAINER" >/dev/null
 
 mysql_root() {
-    if docker exec -i "$MYSQL_CONTAINER" mysql -uroot -e "SELECT 1" >/dev/null 2>&1; then
+    # 探测必须读 /dev/null：否则 docker exec -i 会吞掉管道传入的 SQL，后面的授权语句实际没有执行。
+    if docker exec -i "$MYSQL_CONTAINER" mysql -uroot -e "SELECT 1" </dev/null >/dev/null 2>&1; then
         docker exec -i "$MYSQL_CONTAINER" mysql -uroot "$@"
     else
         docker exec -i "$MYSQL_CONTAINER" sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" "$@"' sh "$@"
@@ -31,8 +32,10 @@ if [ "$user_count" = "0" ]; then
     mysql_root -e "CREATE USER '$USERNAME'@'%' IDENTIFIED BY '$password'"
 fi
 
+# 旧库授权只需收回一次；已收回时 MySQL 报 1141，忽略即可，不能让它中断后面的授权。
+mysql_root -e "REVOKE ALL PRIVILEGES ON \`$LEGACY_DATABASE\`.* FROM '$USERNAME'@'%'" 2>/dev/null || true
+
 sql=$(cat <<SQL
-REVOKE ALL PRIVILEGES ON \`$LEGACY_DATABASE\`.* FROM '$USERNAME'@'%';
 GRANT SELECT, INSERT, UPDATE ON \`chat-web-srm\`.\`tb_srm_simbank_message\` TO '$USERNAME'@'%';
 GRANT SELECT, INSERT, UPDATE ON \`chat-web-srm\`.\`tb_srm_billing_outbox\` TO '$USERNAME'@'%';
 GRANT SELECT ON \`chat-web-srm\`.\`tb_srm_channel\` TO '$USERNAME'@'%';
