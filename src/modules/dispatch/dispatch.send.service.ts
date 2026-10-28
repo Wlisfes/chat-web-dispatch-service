@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { type ChannelQueuePayload } from '@wlisfes/chat-web-base-schema/rabbitmq'
 import { OBSERVE_SUBMIT_CODE } from '@wlisfes/chat-web-base-schema/observe'
 import { ObserveClientService } from '@/modules/observe/observe.client'
+import { ChargeClientService } from '@/modules/charge/charge.client'
 import { DispatchSubmitCacheService } from '@/modules/dispatch/dispatch.submit.cache'
 import { DispatchSubmitRecorder } from '@/modules/dispatch/dispatch.submit.service'
 import * as SrmSchema from '@wlisfes/chat-web-base-schema/chat-web-srm-mysql'
@@ -53,7 +54,8 @@ export class DispatchSendService {
     constructor(
         private readonly observeClient: ObserveClientService,
         private readonly submitRecorder: DispatchSubmitRecorder,
-        private readonly submitCache: DispatchSubmitCacheService
+        private readonly submitCache: DispatchSubmitCacheService,
+        private readonly chargeClient?: ChargeClientService
     ) {}
 
     public async send(payload: ChannelQueuePayload, record: constants.SimbankMessageResult): Promise<DispatchSendOutcome> {
@@ -68,6 +70,19 @@ export class DispatchSendService {
         const busy = new Set<number>()
         let current = { portKeyId: record.portKeyId, simbankKeyId: record.simbankKeyId }
         for (;;) {
+            const sender = this.submitCache.senderOf?.(route.channelKeyId, current.portKeyId)
+            if (sender && this.chargeClient) {
+                const decision = await this.chargeClient.canSend(sender.userKeyId, sender.payMode)
+                if (!decision.allowed) {
+                    return await this.finish(record, {
+                        sendStatus: SrmSchema.TbSrmSimbankMessageSendStatus.REJECTED,
+                        statusCode: constants.INSUFFICIENT_BALANCE_CODE,
+                        statusMessage: decision.reason || '预付余额不足',
+                        sendTime: new Date()
+                    })
+                }
+            }
+
             let admission
             try {
                 admission = await this.observeClient.enqueue({

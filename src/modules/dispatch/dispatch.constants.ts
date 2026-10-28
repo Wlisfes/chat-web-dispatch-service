@@ -78,6 +78,8 @@ export const OBSERVE_UNAVAILABLE_CODE = 'OBSERVE_UNAVAILABLE'
 export const PORT_BUSY_CODE = 'PORT_BUSY'
 /** 换端口时通道已没有可用端口的状态码。 */
 export const NO_AVAILABLE_PORT_CODE = 'NO_AVAILABLE_PORT'
+/** 预付余额小于等于 0，不允许发送。 */
+export const INSUFFICIENT_BALANCE_CODE = 'INSUFFICIENT_BALANCE'
 
 /** 端口发送队列已满且没有其他空闲端口时，等待多久再重新选端口。等待期间不确认 MQ 消息，形成背压。 */
 export const DISPATCH_PORT_BUSY_RETRY_MS = 1_000

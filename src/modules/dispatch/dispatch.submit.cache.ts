@@ -102,6 +102,10 @@ export class DispatchSubmitCacheService implements OnApplicationBootstrap, OnApp
     }
 
     /** 通道的端口发送间隔毫秒数；通道不在缓存中时为 0（不限速）。 */
+    public senderOf(channelKeyId: number, portKeyId: number) {
+        return (this.snapshot?.senders.get(channelKeyId) ?? []).find(sender => sender.portKeyId === portKeyId)
+    }
+
     public sendInterval(channelKeyId: number): number {
         return this.snapshot?.sendIntervals.get(channelKeyId) ?? 0
     }
