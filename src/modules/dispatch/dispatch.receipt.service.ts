@@ -1,19 +1,15 @@
 import { Injectable, Logger, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common'
 import { DataSource, InjectDataSource, LessThan } from '@wlisfes/chat-web-base-schema/database'
-import { type SimbankWebhookPayload } from '@wlisfes/chat-web-base-schema/observe'
-import { RabbitmqService, SMS_SIMBANK_WEBHOOK_QUEUE } from '@wlisfes/chat-web-base-schema/rabbitmq'
 import { ObserveClientService } from '@/modules/observe/observe.client'
-import { DispatchSubmitRecorder } from '@/modules/dispatch/dispatch.submit.service'
 import { toSimbankOutcome } from '@/modules/dispatch/dispatch.send.service'
+import { DispatchSubmitRecorder } from '@/modules/dispatch/dispatch.submit.service'
 import * as SrmSchema from '@wlisfes/chat-web-base-schema/chat-web-srm-mysql'
 import * as constants from '@/modules/dispatch/dispatch.constants'
 
 /**
- * 设备回执写回。
- *
- * - 消费回执队列：Observe 发送完成 → Hooks 校验转发 → 本服务写回发送记录（只更新 submitted，重复回执不覆盖）；
- * - 回执超时检查：提交超过超时时间仍为 submitted 的记录按短信ID查询设备侧状态。
- *   有结果写回；排队或发送中继续等待；设备没有记录（Observe 重启丢失、回执推送放弃）记为发送失败，不重新发送，宁可少发也不重复发。
+ * 回执超时检查。设备回执的状态写回已由 Hooks 消费队列处理。
+ * 提交超过超时时间仍为 submitted 时，按短信ID查询设备侧状态：有结果写回；排队或发送中继续等待；
+ * 设备没有记录时记为发送失败，不重新发送。
  */
 @Injectable()
 export class DispatchReceiptService implements OnApplicationBootstrap, OnApplicationShutdown {
@@ -23,35 +19,17 @@ export class DispatchReceiptService implements OnApplicationBootstrap, OnApplica
 
     constructor(
         @InjectDataSource() private readonly dataSource: DataSource,
-        private readonly rabbitmqService: RabbitmqService,
         private readonly observeClient: ObserveClientService,
         private readonly submitRecorder: DispatchSubmitRecorder
     ) {}
 
-    public async onApplicationBootstrap(): Promise<void> {
-        await this.rabbitmqService.consume<SimbankWebhookPayload>(SMS_SIMBANK_WEBHOOK_QUEUE, async receipt => this.fetchReceipt(receipt))
+    public onApplicationBootstrap(): void {
         this.timer = setInterval(() => void this.check(), constants.DISPATCH_RECEIPT_CHECK_INTERVAL_MS)
         this.timer.unref()
     }
 
     public onApplicationShutdown(): void {
         if (this.timer) clearInterval(this.timer)
-    }
-
-    /** 写回设备回执；写库失败时抛错，由 MQ 拒绝进入死信，超时检查会再次查询补偿。 */
-    public async fetchReceipt(receipt: SimbankWebhookPayload): Promise<'ack'> {
-        const keyId = Number(receipt?.msgKeyId)
-        if (!receipt?.msgId || !Number.isInteger(keyId) || keyId <= 0) {
-            this.logger.warn(`设备回执缺少 msgId 或 msgKeyId，已丢弃：${JSON.stringify(receipt)}`)
-            return 'ack'
-        }
-        const outcome = toSimbankOutcome(receipt, true)
-        const saved = await this.submitRecorder.complete(keyId, outcome, receipt.msgId)
-        const summary = `msgId=${receipt.msgId}，msgKeyId=${keyId}，portKeyId=${receipt.portKeyId}，sendStatus=${outcome.sendStatus}，statusCode=${outcome.statusCode}`
-        if (!saved) this.logger.warn(`设备回执未写入，记录状态已变更或不匹配：${summary}`)
-        else if (outcome.sendStatus === SrmSchema.TbSrmSimbankMessageSendStatus.SUCCESS) this.logger.log(`短信发送成功：${summary}`)
-        else this.logger.warn(`短信发送失败：${summary}，原因=${outcome.statusMessage}`)
-        return 'ack'
     }
 
     /** 回执超时检查；上一轮未结束时复用同一次。 */

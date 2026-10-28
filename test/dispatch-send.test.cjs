@@ -180,27 +180,6 @@ test('重投时查询失败：不重新提交，记为提交失败', async () =>
     assert.match(rec.calls[0].outcome.statusMessage, /查询失败，未重新发送/)
 })
 
-test('设备回执：按 msgKeyId + msgId 写回结果，缺少定位信息时丢弃', async () => {
-    const rec = recorder()
-    const receipts = new DispatchReceiptService({}, {}, {}, rec)
-    await receipts.fetchReceipt({
-        msgId: 'm1',
-        msgKeyId: 99,
-        simbankKeyId: 3001,
-        portKeyId: 2001,
-        sendStatus: 'success',
-        statusCode: 'OK',
-        statusMessage: '',
-        sendTime: '2026-10-28T02:00:00.000Z'
-    })
-    assert.equal(rec.calls[0].keyId, 99)
-    assert.equal(rec.calls[0].msgId, 'm1')
-    assert.equal(rec.calls[0].outcome.sendStatus, 'success')
-    assert.equal(rec.calls[0].outcome.accepted, true)
-    assert.equal(await receipts.fetchReceipt({ msgId: 'm1' }), 'ack')
-    assert.equal(rec.calls.length, 1)
-})
-
 test('回执超时检查：有结果写回，排队中继续等待，设备没有记录记为失败，查询失败下一轮再查', async () => {
     const rows = [
         { keyId: 1, msgId: 'done' },
@@ -225,7 +204,7 @@ test('回执超时检查：有结果写回，排队中继续等待，设备没�
         }
     }
     const rec = recorder()
-    await new DispatchReceiptService(dataSource, {}, observe, rec).check(Date.parse('2026-10-28T03:00:00.000Z'))
+    await new DispatchReceiptService(dataSource, observe, rec).check(Date.parse('2026-10-28T03:00:00.000Z'))
     assert.equal(where.sendStatus, 'submitted')
     assert.deepEqual(
         rec.calls.map(call => [call.keyId, call.outcome.sendStatus, call.outcome.statusCode]),

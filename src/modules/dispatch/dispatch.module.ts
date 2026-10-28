@@ -8,7 +8,7 @@ import { ObserveModule } from '@/modules/observe/observe.module'
 import { DispatchBillingOutbox } from '@/modules/dispatch/dispatch.billing.outbox'
 import { DispatchReceiptService } from '@/modules/dispatch/dispatch.receipt.service'
 
-/** 短信消费模块：只消费队列，不提供接口。入库后异步提交 Observe 模拟设备发送，设备回执经 Hooks 回执队列写回。 */
+/** 短信消费模块：只消费队列，不提供接口。入库后异步提交 Observe。设备回执由 Hooks 入队后逐条写回，本服务只做回执超时补偿。 */
 @Module({
     imports: [ObserveModule],
     providers: [
