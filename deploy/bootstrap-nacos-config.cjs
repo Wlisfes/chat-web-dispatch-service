@@ -1,6 +1,6 @@
 'use strict'
 
-/** 部署前准备 Dispatch Nacos 配置，并给网关追加 /api/dispatch 与 /feign/dispatch。已有配置只补齐 SRM 库连接，不覆盖其他配置。 */
+/** 部署前准备 Dispatch Nacos 配置，并给网关追加 /api/dispatch 与 /feign/dispatch。已有配置只补齐 SRM 库连接和钱包 Redis，不覆盖其他配置。 */
 
 function required(name, environment = process.env) {
     const value = environment[name]
@@ -118,10 +118,27 @@ function ensureSrmDatabaseConfig(content, environment = process.env) {
     return `${lines.join('\n').replace(/\n*$/, '')}\n`
 }
 
-function validateDispatchConfig(content) {
-    if (!content.includes('port: 5080')) throw new Error('Dispatch Nacos 配置缺少 server.port: 5080')
+/** 从 Finance 配置复制 Redis 连接，生成 Dispatch 读取供应商钱包余额使用的 walletRedis 节点。 */
+function walletRedisConfig(source) {
+    const redis = topLevelBlock(source, 'redis')
+    if (!redis) throw new Error('chat-web-finance-service.yaml 缺少 redis，无法生成 Dispatch walletRedis')
+    return redis.replace(/^redis:/, 'walletRedis:').replace(/^(\s{2}database:\s*)\d+\s*$/m, '$13')
+}
+
+/** 已有 walletRedis 时保留人工配置；缺少时追加到末尾。 */
+function ensureWalletRedisConfig(content, source) {
+    if (topLevelBlock(content, 'walletRedis')) return content
+    return `${content.trimEnd()}\n\n# 读取 Finance 供应商钱包余额；database 必须固定为 3。\n${walletRedisConfig(source)}\n`
+}
+
+function validateDispatchConfig(content, dataId = 'chat-web-dispatch-service.yaml') {
+    const port = dataId.endsWith('-development.yaml') ? 5081 : 5080
+    if (!new RegExp(`^\\s{2}port:\\s*${port}\\s*$`, 'm').test(content)) throw new Error(`Dispatch Nacos 配置缺少 server.port: ${port}`)
     if (!content.includes('chat-web-srm:')) throw new Error('Dispatch Nacos 配置缺少 database.chat-web-srm')
     if (!/database:\s*5/.test(content)) throw new Error('Dispatch Redis database 必须为 5')
+    const walletRedis = topLevelBlock(content, 'walletRedis')
+    if (!walletRedis) throw new Error('Dispatch Nacos 配置缺少 walletRedis')
+    if (!/^\s{2}database:\s*3\s*$/m.test(walletRedis)) throw new Error('Dispatch walletRedis database 必须为 3')
     if (!content.includes('service_token:') || !content.includes('secret:')) throw new Error('Dispatch Nacos 配置缺少网关凭据')
     return content
 }
@@ -160,18 +177,26 @@ const DISPATCH_ROUTES = [
     }
 ]
 
+/** Dispatch 使用 development Data ID 时读取同环境 Finance 配置，避免把容器内 Redis 地址写入本地开发配置。 */
+function financeConfigDataId(dispatchDataId) {
+    return dispatchDataId.endsWith('-development.yaml') ? 'chat-web-finance-service-development.yaml' : 'chat-web-finance-service.yaml'
+}
+
 async function ensureDispatchConfig(environment = process.env) {
     const dataId = environment.NACOS_CONFIG_DATA_ID?.trim() || 'chat-web-dispatch-service.yaml'
     const existing = await readConfig(dataId, environment)
+    const financeDataId = financeConfigDataId(dataId)
+    const finance = await readConfig(financeDataId, environment)
+    if (!finance) throw new Error(`未找到 ${financeDataId}，无法复制钱包 Redis 配置`)
     if (existing) {
-        const updated = ensureSrmDatabaseConfig(existing, environment)
-        validateDispatchConfig(updated)
+        const updated = ensureWalletRedisConfig(ensureSrmDatabaseConfig(existing, environment), finance)
+        validateDispatchConfig(updated, dataId)
         if (updated !== existing) await writeConfig(dataId, updated, environment)
         return false
     }
     const source = await readConfig('chat-web-srm-service.yaml', environment)
     if (!source) throw new Error('未找到 chat-web-srm-service.yaml，无法复制网关和 Redis 配置')
-    const content = validateDispatchConfig(createDispatchConfig(source, environment))
+    const content = validateDispatchConfig(ensureWalletRedisConfig(createDispatchConfig(source, environment), finance), dataId)
     await writeConfig(dataId, content, environment)
     return true
 }
@@ -202,4 +227,13 @@ if (require.main === module) {
     })
 }
 
-module.exports = { createDispatchConfig, ensureGatewayRoute, ensureSrmDatabaseConfig, validateDispatchConfig, DISPATCH_ROUTES }
+module.exports = {
+    createDispatchConfig,
+    ensureGatewayRoute,
+    ensureSrmDatabaseConfig,
+    ensureWalletRedisConfig,
+    financeConfigDataId,
+    validateDispatchConfig,
+    walletRedisConfig,
+    DISPATCH_ROUTES
+}
