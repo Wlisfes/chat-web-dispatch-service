@@ -2,6 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { DispatchSendService } = require('../dist/modules/dispatch/dispatch.send.service')
 const { DispatchSubmitRecorder } = require('../dist/modules/dispatch/dispatch.submit.service')
+const { WalletService } = require('../dist/modules/wallet/wallet.service')
 
 const record = { keyId: 99, portKeyId: 2001, simbankKeyId: 3001, sendStatus: 'submitted' }
 const payload = {
@@ -137,4 +138,28 @@ test('重投时记录仍为 submitted：重新提交，由 Observe 按短信ID�
     const outcome = await new DispatchSendService(observe, recorder(), cache()).send(payload, record)
     assert.equal(submitted, 1)
     assert.equal(outcome.pending, true)
+})
+
+test('预付供应商发送前直接读取 Redis 余额，余额不足时拒绝发送', async () => {
+    const reads = []
+    const walletRedis = {
+        hGet: async (key, field) => (reads.push([key, field]), '0')
+    }
+    let called = false
+    const observe = { enqueue: async () => ((called = true), accepted) }
+    const rec = recorder()
+    const submitCache = { ...cache(), senderOf: () => ({ userKeyId: 7, payMode: 'prepaid' }) }
+    const outcome = await new DispatchSendService(observe, rec, submitCache, new WalletService(walletRedis)).send(payload, record)
+    assert.deepEqual(reads, [['chat-web-finance:srm:balances', '7']])
+    assert.equal(called, false)
+    assert.equal(outcome.statusCode, 'INSUFFICIENT_BALANCE')
+})
+
+test('后付供应商不读取 Redis 余额，预付余额充足时允许发送', async () => {
+    let reads = 0
+    const walletRedis = { hGet: async () => (reads++, '10') }
+    const wallet = new WalletService(walletRedis)
+    assert.deepEqual(await wallet.canSend(7, 'postpaid'), { allowed: true })
+    assert.equal(reads, 0)
+    assert.deepEqual(await wallet.canSend(7, 'prepaid'), { allowed: true, balance: 10 })
 })

@@ -4,6 +4,7 @@
 
 - 端口：`5080`
 - Redis database：`5`
+- 钱包 Redis：Nacos `walletRedis`，读取 Finance Redis index `3` 的供应商余额
 - Nacos Data ID：`chat-web-dispatch-service-development.yaml`
 - 数据库配置键：`database.chat-web-dispatch`
 

@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { type ChannelQueuePayload } from '@wlisfes/chat-web-base-schema/rabbitmq'
 import { OBSERVE_SUBMIT_CODE } from '@wlisfes/chat-web-base-schema/observe'
 import { ObserveClientService } from '@/modules/observe/observe.client'
-import { ChargeClientService } from '@/modules/charge/charge.client'
+import { WalletService } from '@/modules/wallet/wallet.service'
 import { DispatchSubmitCacheService } from '@/modules/dispatch/dispatch.submit.cache'
 import { DispatchSubmitRecorder } from '@/modules/dispatch/dispatch.submit.service'
 import * as SrmSchema from '@wlisfes/chat-web-base-schema/chat-web-srm-mysql'
@@ -55,11 +55,13 @@ export class DispatchSendService {
         private readonly observeClient: ObserveClientService,
         private readonly submitRecorder: DispatchSubmitRecorder,
         private readonly submitCache: DispatchSubmitCacheService,
-        private readonly chargeClient?: ChargeClientService
+        private readonly walletService?: WalletService
     ) {}
 
     public async send(payload: ChannelQueuePayload, record: constants.SimbankMessageResult): Promise<DispatchSendOutcome> {
-        if (SETTLED_STATUSES.has(record.sendStatus)) return { skipped: true, sendStatus: record.sendStatus }
+        if (SETTLED_STATUSES.has(record.sendStatus)) {
+            return { skipped: true, sendStatus: record.sendStatus }
+        }
         return await this.enqueue(payload, record)
     }
 
@@ -71,8 +73,8 @@ export class DispatchSendService {
         let current = { portKeyId: record.portKeyId, simbankKeyId: record.simbankKeyId }
         for (;;) {
             const sender = this.submitCache.senderOf?.(route.channelKeyId, current.portKeyId)
-            if (sender && this.chargeClient) {
-                const decision = await this.chargeClient.canSend(sender.userKeyId, sender.payMode)
+            if (sender && this.walletService) {
+                const decision = await this.walletService.canSend(sender.userKeyId, sender.payMode)
                 if (!decision.allowed) {
                     return await this.finish(record, {
                         sendStatus: SrmSchema.TbSrmSimbankMessageSendStatus.REJECTED,

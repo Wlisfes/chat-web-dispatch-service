@@ -4,6 +4,8 @@ const {
     createDispatchConfig,
     ensureGatewayRoute,
     ensureSrmDatabaseConfig,
+    ensureWalletRedisConfig,
+    financeConfigDataId,
     validateDispatchConfig
 } = require('../deploy/bootstrap-nacos-config.cjs')
 
@@ -27,6 +29,13 @@ redis:
   password: ""
 `
 
+const finance = `redis:
+  host: chat-web-redis
+  port: 6379
+  database: 3
+  password: "secret"
+`
+
 const environment = {
     DISPATCH_MYSQL_DATABASE: 'chat-web-srm',
     DISPATCH_MYSQL_USERNAME: 'chat_web_dispatch_service',
@@ -35,8 +44,9 @@ const environment = {
 }
 
 test('Dispatch Nacos 配置连接 SRM 库并把 Redis 固定到 index 5', () => {
-    const content = createDispatchConfig(source, environment)
+    const content = ensureWalletRedisConfig(createDispatchConfig(source, environment), finance)
     validateDispatchConfig(content)
+    assert.match(content, /walletRedis:\n  host: chat-web-redis\n  port: 6379\n  database: 3/)
     assert.match(content, /port: 5080/)
     assert.match(content, /chat-web-srm:/)
     assert.match(content, /username: "chat_web_dispatch_service"/)
@@ -65,13 +75,13 @@ database:
 redis:
   database: 5
 `
-    const updated = ensureSrmDatabaseConfig(existing, environment)
+    const updated = ensureWalletRedisConfig(ensureSrmDatabaseConfig(existing, environment), finance)
     validateDispatchConfig(updated)
     assert.match(updated, /chat-web-srm:/)
     assert.match(updated, /database: "chat-web-srm"/)
     assert.doesNotMatch(updated, /chat-web-dispatch:/)
     assert.match(updated, /redis:\n  database: 5/)
-    assert.equal(ensureSrmDatabaseConfig(updated, environment), updated)
+    assert.equal(ensureWalletRedisConfig(ensureSrmDatabaseConfig(updated, environment), finance), updated)
 })
 
 test('网关配置缺少 Dispatch 路由时追加，重复执行不覆盖', () => {
@@ -85,4 +95,9 @@ test('网关配置缺少 Dispatch 路由时追加，重复执行不覆盖', () =
     const once = ensureGatewayRoute(gateway, route)
     assert.match(once, /prefix: \/api\/dispatch/)
     assert.equal(ensureGatewayRoute(once, route), once)
+})
+
+test('开发环境 Dispatch 从开发环境 Finance 配置复制钱包 Redis', () => {
+    assert.equal(financeConfigDataId('chat-web-dispatch-service-development.yaml'), 'chat-web-finance-service-development.yaml')
+    assert.equal(financeConfigDataId('chat-web-dispatch-service.yaml'), 'chat-web-finance-service.yaml')
 })
