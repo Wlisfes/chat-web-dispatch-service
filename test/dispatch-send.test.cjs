@@ -143,21 +143,21 @@ test('重投时记录仍为 submitted：重新提交，由 Observe 按短信ID�
 test('预付供应商发送前直接读取 Redis 余额，余额不足时拒绝发送', async () => {
     const reads = []
     const walletRedis = {
-        hGetAll: async key => (reads.push(key), { balance: '0', credit: '0' })
+        hGet: async (key, field) => (reads.push([key, field]), '0')
     }
     let called = false
     const observe = { enqueue: async () => ((called = true), accepted) }
     const rec = recorder()
     const submitCache = { ...cache(), senderOf: () => ({ userKeyId: 7, payMode: 'prepaid' }) }
     const outcome = await new DispatchSendService(observe, rec, submitCache, new WalletService(walletRedis)).send(payload, record)
-    assert.deepEqual(reads, ['chat-web-finance:srm:wallet:7'])
+    assert.deepEqual(reads, [['chat-web-finance:srm:balances', '7']])
     assert.equal(called, false)
     assert.equal(outcome.statusCode, 'INSUFFICIENT_BALANCE')
 })
 
 test('后付供应商不读取 Redis 余额，预付余额充足时允许发送', async () => {
     let reads = 0
-    const walletRedis = { hGetAll: async () => (reads++, { balance: '10' }) }
+    const walletRedis = { hGet: async () => (reads++, '10') }
     const wallet = new WalletService(walletRedis)
     assert.deepEqual(await wallet.canSend(7, 'postpaid'), { allowed: true })
     assert.equal(reads, 0)

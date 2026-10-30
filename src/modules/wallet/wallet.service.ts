@@ -1,8 +1,8 @@
 import { Inject, Injectable, Logger } from '@nestjs/common'
 import { RedisService } from '@wlisfes/chat-web-base-schema/redis'
-import * as SrmSchema from '@wlisfes/chat-web-base-schema/chat-web-srm-mysql'
-import { SRM_WALLET_BALANCE_FIELD, WALLET_REDIS, srmWalletRedisKey } from '@/modules/wallet/wallet.constants'
+import { SRM_WALLET_BALANCE_KEY, WALLET_REDIS } from '@/modules/wallet/wallet.constants'
 import { type WalletCanSendResult } from '@/modules/wallet/wallet.interface'
+import * as SrmSchema from '@wlisfes/chat-web-base-schema/chat-web-srm-mysql'
 
 /**
  * 发送前直接读取 Finance 钱包 Redis 余额。
@@ -17,13 +17,14 @@ export class WalletService {
     public async canSend(userKeyId: number, payMode: SrmSchema.TbSrmUserPayMode | string): Promise<WalletCanSendResult> {
         if (payMode !== SrmSchema.TbSrmUserPayMode.PREPAID) return { allowed: true }
         try {
-            const snapshot = await this.redisService.hGetAll(srmWalletRedisKey(userKeyId))
-            const raw = snapshot[SRM_WALLET_BALANCE_FIELD]
+            const raw = await this.redisService.hGet(SRM_WALLET_BALANCE_KEY, String(userKeyId))
             const balance = Number(raw)
             if (typeof raw !== 'string' || !/^-?\d+$/.test(raw) || !Number.isSafeInteger(balance)) {
                 return { allowed: false, reason: '供应商钱包余额缺失，预付不允许发送' }
             }
-            if (balance <= 0) return { allowed: false, balance, reason: '预付余额不足' }
+            if (balance <= 0) {
+                return { allowed: false, balance, reason: '预付余额不足' }
+            }
             return { allowed: true, balance }
         } catch (error) {
             const reason = error instanceof Error ? error.message : String(error)
