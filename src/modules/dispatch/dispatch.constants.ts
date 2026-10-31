@@ -41,6 +41,8 @@ export interface SimbankSender {
     channelAlias: string
     channelOwnerUserUid: string
     portKeyId: number
+    /** 端口激活方向。只发送与短信方向一致的端口。 */
+    countryKeyId: number
     port: number
     sim: string | null
     iccid: string | null
