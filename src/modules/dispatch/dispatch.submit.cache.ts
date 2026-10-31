@@ -94,7 +94,10 @@ export class DispatchSubmitCacheService implements OnApplicationBootstrap, OnApp
     public selectExcept(payload: ChannelQueuePayload, excluded: ReadonlySet<number>, now = Date.now()): SelectedSubmitSender | undefined {
         const { message, route } = payload
         const snapshot = this.current()
-        const candidates = (snapshot.senders.get(route.channelKeyId) ?? []).filter(sender => !excluded.has(sender.portKeyId))
+        const countryKeyId = Number(message.countryKeyId)
+        const candidates = (snapshot.senders.get(route.channelKeyId) ?? []).filter(
+            sender => !excluded.has(sender.portKeyId) && sender.countryKeyId === countryKeyId
+        )
         const sender = this.balancer.pick(route.channelKeyId, candidates)
         if (!sender) return undefined
         const quoteKey = submitQuoteKey(sender.userKeyId, sender.simbankKeyId, Number(message.countryKeyId))
@@ -190,7 +193,7 @@ export class DispatchSubmitCacheService implements OnApplicationBootstrap, OnApp
                 activateStatus: SrmSchema.TbSrmSimbankPortActivateStatus.ACTIVE,
                 online: SrmSchema.TbSrmSimbankPortOnline.ONLINE
             },
-            select: { keyId: true, simbankKeyId: true, port: true, sim: true, iccid: true }
+            select: { keyId: true, simbankKeyId: true, port: true, sim: true, iccid: true, countryKeyId: true }
         })
     }
 
@@ -266,6 +269,7 @@ export class DispatchSubmitCacheService implements OnApplicationBootstrap, OnApp
                     channelAlias: channel.alias,
                     channelOwnerUserUid: channel.ownerUserUid,
                     portKeyId: port.keyId,
+                    countryKeyId: port.countryKeyId,
                     port: port.port,
                     sim: port.sim,
                     iccid: port.iccid,

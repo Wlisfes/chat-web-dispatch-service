@@ -40,6 +40,7 @@ function sender(overrides = {}) {
         channelAlias: 'C1',
         channelOwnerUserUid: 'owner-channel',
         portKeyId: 2001,
+        countryKeyId: 1077,
         port: 3,
         sim: '8613000000000',
         iccid: '8986',
