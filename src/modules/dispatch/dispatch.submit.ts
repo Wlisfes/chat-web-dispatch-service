@@ -8,7 +8,7 @@ export function submitQuoteKey(userKeyId: number, simbankKeyId: number, countryK
 /** 按发送当时的时间挑选报价；同时有多段时取生效时间最新的一段。 */
 export function selectQuote(quotes: constants.SimbankQuoteCandidate[] | undefined, now = Date.now()): number {
     const quote = quotes?.find(item => item.effectiveTime <= now && (item.expiryTime === null || item.expiryTime > now))
-    return quote?.downUsd ?? 0
+    return quote?.downLocal ?? 0
 }
 
 /**
