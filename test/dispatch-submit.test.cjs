@@ -96,7 +96,7 @@ function fakeDataSource({ duplicate = false, existing = { keyId: 12, portKeyId: 
 
 test('发送记录正常路径只插入一次，并写入缓存中的端口和成本快照', async () => {
     const fake = fakeDataSource()
-    const cache = { select: () => ({ sender: sender(), downUsd: 54100 }) }
+    const cache = { select: () => ({ sender: sender(), downLocal: 54100 }) }
     const result = await new DispatchSubmitRecorder(fake.dataSource, cache).submit(message())
     const row = fake.inserted()
     assert.deepEqual(result, { keyId: 99, portKeyId: 2001, simbankKeyId: 3001, sendStatus: 'submitted' })
@@ -125,7 +125,7 @@ test('端口忙换端口：只更新 submitted 记录的端口、设备、供应
     }
     const moved = await new DispatchSubmitRecorder(dataSource, {}).reassign(99, message(), {
         sender: sender({ portKeyId: 2002, simbankKeyId: 3002, payMode: 'postpaid' }),
-        downUsd: 30000
+        downLocal: 30000
     })
     assert.equal(moved, true)
     assert.equal(captured.values.portKeyId, 2002)
@@ -137,7 +137,7 @@ test('端口忙换端口：只更新 submitted 记录的端口、设备、供应
 
 test('同一个 msgId 重投时插入被忽略，回查已有记录', async () => {
     const fake = fakeDataSource({ duplicate: true })
-    const cache = { select: () => ({ sender: sender(), downUsd: 54100 }) }
+    const cache = { select: () => ({ sender: sender(), downLocal: 54100 }) }
     const result = await new DispatchSubmitRecorder(fake.dataSource, cache).submit(message())
     assert.deepEqual(result, { keyId: 12, portKeyId: 22, simbankKeyId: 32, sendStatus: 'success' })
     assert.equal(fake.lookups(), 1)
@@ -177,8 +177,8 @@ test('端口按权重平滑轮询', () => {
 
 test('报价按发送时间选择生效段', () => {
     const quotes = [
-        { downUsd: 30000, effectiveTime: 2_000, expiryTime: null },
-        { downUsd: 50000, effectiveTime: 1_000, expiryTime: 2_000 }
+        { downLocal: 30000, effectiveTime: 2_000, expiryTime: null },
+        { downLocal: 50000, effectiveTime: 1_000, expiryTime: 2_000 }
     ]
     assert.equal(selectQuote(quotes, 1_500), 50000)
     assert.equal(selectQuote(quotes, 2_500), 30000)
