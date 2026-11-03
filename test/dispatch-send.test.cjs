@@ -26,7 +26,7 @@ function cache(ports = [2002], sendInterval = 3000) {
         sendInterval: () => sendInterval,
         selectExcept: (_payload, excluded) => {
             const port = ports.find(item => !excluded.has(item))
-            return port ? { sender: { portKeyId: port, simbankKeyId: 3002 }, downUsd: 0 } : undefined
+            return port ? { sender: { portKeyId: port, simbankKeyId: 3002 }, downLocal: 0 } : undefined
         }
     }
 }

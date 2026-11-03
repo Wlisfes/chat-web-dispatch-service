@@ -60,7 +60,8 @@ export interface SimbankSender {
 
 /** 提交缓存中的报价时间段：按发送当时的时间挑选生效报价。 */
 export interface SimbankQuoteCandidate {
-    downUsd: number
+    /** 报价币种金额（放大百万倍）。扣费用这个，不用 USD 参照金额。 */
+    downLocal: number
     effectiveTime: number
     expiryTime: number | null
 }

@@ -18,8 +18,8 @@ export class DispatchSubmitRecorder {
 
     /** 正常路径只执行一次 INSERT；同一条短信重投时才回查已有记录。 */
     public async submit(payload: ChannelQueuePayload): Promise<constants.SimbankMessageResult> {
-        const { sender, downUsd } = this.submitCache.select(payload)
-        const record = this.createRecord(payload, sender, downUsd)
+        const { sender, downLocal } = this.submitCache.select(payload)
+        const record = this.createRecord(payload, sender, downLocal)
         const result = await this.dataSource
             .createQueryBuilder()
             .insert()
@@ -49,7 +49,7 @@ export class DispatchSubmitRecorder {
         const result = await this.dataSource
             .createQueryBuilder()
             .update(SrmSchema.TbSrmSimbankMessage)
-            .set(this.senderFields(selected.sender, selected.downUsd, segments))
+            .set(this.senderFields(selected.sender, selected.downLocal, segments))
             .where('keyId = :keyId AND sendStatus = :submitted', {
                 keyId,
                 submitted: SrmSchema.TbSrmSimbankMessageSendStatus.SUBMITTED
@@ -82,7 +82,7 @@ export class DispatchSubmitRecorder {
     private createRecord(
         { message, route }: ChannelQueuePayload,
         sender: constants.SimbankSender,
-        downUsd: number
+        downLocal: number
     ): Partial<SrmSchema.TbSrmSimbankMessage> {
         const segments = this.positiveInteger(message.segments, 1)
         return {
@@ -103,13 +103,13 @@ export class DispatchSubmitRecorder {
             channelKeyId: sender.channelKeyId,
             channelAlias: sender.channelAlias,
             channelOwnerUserUid: sender.channelOwnerUserUid,
-            ...this.senderFields(sender, downUsd, segments),
+            ...this.senderFields(sender, downLocal, segments),
             price: this.nonNegativeNumber(message.price)
         }
     }
 
     /** 发送记录中随端口变化的快照：端口、设备、供应商和成本。 */
-    private senderFields(sender: constants.SimbankSender, downUsd: number, segments: number): Partial<SrmSchema.TbSrmSimbankMessage> {
+    private senderFields(sender: constants.SimbankSender, downLocal: number, segments: number): Partial<SrmSchema.TbSrmSimbankMessage> {
         return {
             fromNumber: sender.sim || String(sender.port),
             simbankKeyId: sender.simbankKeyId,
@@ -124,7 +124,8 @@ export class DispatchSubmitRecorder {
             port: sender.port,
             sim: sender.sim,
             iccid: sender.iccid,
-            cost: this.nonNegativeNumber(downUsd) * segments
+            // 扣费用报价币种金额。USD 只留在报价表里做报表参照，不写入扣费金额。
+            cost: this.nonNegativeNumber(downLocal) * segments
         }
     }
 

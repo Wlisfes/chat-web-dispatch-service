@@ -16,7 +16,8 @@ interface SubmitSnapshot {
 
 export interface SelectedSubmitSender {
     sender: constants.SimbankSender
-    downUsd: number
+    /** 报价币种成本（放大百万倍），写入发送记录后按此扣费。 */
+    downLocal: number
 }
 
 const SUBMIT_CONFIG_TABLES = [
@@ -101,7 +102,7 @@ export class DispatchSubmitCacheService implements OnApplicationBootstrap, OnApp
         const sender = this.balancer.pick(route.channelKeyId, candidates)
         if (!sender) return undefined
         const quoteKey = submitQuoteKey(sender.userKeyId, sender.simbankKeyId, Number(message.countryKeyId))
-        return { sender, downUsd: selectQuote(snapshot.quotes.get(quoteKey), now) }
+        return { sender, downLocal: selectQuote(snapshot.quotes.get(quoteKey), now) }
     }
 
     /** 通道的端口发送间隔毫秒数；通道不在缓存中时为 0（不限速）。 */
@@ -226,7 +227,7 @@ export class DispatchSubmitCacheService implements OnApplicationBootstrap, OnApp
                 userKeyId: true,
                 simbankKeyId: true,
                 countryKeyId: true,
-                downUsd: true,
+                downLocal: true,
                 effectiveTime: true,
                 expiryTime: true
             },
@@ -237,7 +238,7 @@ export class DispatchSubmitCacheService implements OnApplicationBootstrap, OnApp
             const key = submitQuoteKey(quote.userKeyId, quote.simbankKeyId, quote.countryKeyId)
             const group = groups.get(key) ?? []
             group.push({
-                downUsd: Number(quote.downUsd),
+                downLocal: Number(quote.downLocal),
                 effectiveTime: new Date(quote.effectiveTime).getTime(),
                 expiryTime: quote.expiryTime ? new Date(quote.expiryTime).getTime() : null
             })
